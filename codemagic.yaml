@@ -15,6 +15,7 @@ workflows:
         XCODE_WORKSPACE: "ios/App/App.xcworkspace"
         XCODE_SCHEME: "App"
         APPLE_TEAM_ID: "USZ4L8LG24"
+        PROFILE_NAME: "Croc Clash App Store Profile"
       node: 20.11.1
       xcode: latest
       cocoapods: default
@@ -32,60 +33,50 @@ workflows:
         script: |
           npm install
 
-      - name: Install Capacitor iOS platform if missing
+      - name: Capacitor sync (ios/ already committed)
         script: |
-          if [ ! -d "ios" ]; then
-            echo "ios/ folder missing — running cap add ios"
-            npx cap add ios
-          fi
           npx cap sync ios
           chmod +x scripts/install-ios-assets.sh
           ./scripts/install-ios-assets.sh
 
       - name: Bump build number from App Store Connect
         script: |
-          LATEST_BUILD_NUMBER=$(app-store-connect get-latest-app-store-build-number "$APP_STORE_APPLE_ID" || echo 0)
+          set +e
+          LATEST_BUILD_NUMBER=$(app-store-connect get-latest-app-store-build-number "$APP_STORE_APPLE_ID")
+          set -e
+          if [ -z "$LATEST_BUILD_NUMBER" ] || [ "$LATEST_BUILD_NUMBER" = "" ]; then
+            LATEST_BUILD_NUMBER=0
+          fi
           NEW_BUILD_NUMBER=$(($LATEST_BUILD_NUMBER + 1))
           echo "Setting build number to $NEW_BUILD_NUMBER"
           cd ios/App
           agvtool new-version -all $NEW_BUILD_NUMBER
           agvtool new-marketing-version 1.0
 
-      - name: Set up code signing
+      - name: Set up code signing (manual)
         script: |
           keychain initialize
-          # Register bundle id (idempotent) and ensure cert + profile exist
-          app-store-connect fetch-signing-files \
-            "$BUNDLE_ID" \
-            --type IOS_APP_STORE \
-            --create \
-            --certificate-key-environment-variable=CM_CERTIFICATE_PRIVATE_KEY 2>&1 || \
+          # Fetch the existing distribution cert + the profile we created via API
           app-store-connect fetch-signing-files \
             "$BUNDLE_ID" \
             --type IOS_APP_STORE \
             --create
           keychain add-certificates
-          xcode-project use-profiles
-
-      - name: Force-set development team in Xcode project
-        script: |
-          # Capacitor's generated project sometimes leaves DEVELOPMENT_TEAM blank
-          cd ios/App
-          /usr/libexec/PlistBuddy -c "Print" App.xcodeproj/project.pbxproj 2>/dev/null || true
-          sed -i '' "s/DEVELOPMENT_TEAM = \"\";/DEVELOPMENT_TEAM = $APPLE_TEAM_ID;/g" App.xcodeproj/project.pbxproj || true
-          sed -i '' "s/DEVELOPMENT_TEAM = ;/DEVELOPMENT_TEAM = $APPLE_TEAM_ID;/g" App.xcodeproj/project.pbxproj || true
+          # Print profile inventory for log clarity
+          ls -la ~/Library/MobileDevice/Provisioning\ Profiles/ || true
 
       - name: Install CocoaPods dependencies
         script: |
           cd ios/App
           pod install
 
-      - name: Build .ipa
+      - name: Build .ipa with manual signing
         script: |
           xcode-project build-ipa \
             --workspace "$XCODE_WORKSPACE" \
             --scheme "$XCODE_SCHEME" \
-            --config Release
+            --config Release \
+            --export-options-plist ios/ExportOptions.plist
 
     artifacts:
       - build/ios/ipa/*.ipa
