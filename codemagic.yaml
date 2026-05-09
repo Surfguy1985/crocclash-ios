@@ -14,6 +14,7 @@ workflows:
         BUNDLE_ID: "com.brycebeck.crocclash"
         XCODE_WORKSPACE: "ios/App/App.xcworkspace"
         XCODE_SCHEME: "App"
+        APPLE_TEAM_ID: "USZ4L8LG24"
       node: 20.11.1
       xcode: latest
       cocoapods: default
@@ -53,12 +54,26 @@ workflows:
       - name: Set up code signing
         script: |
           keychain initialize
+          # Register bundle id (idempotent) and ensure cert + profile exist
+          app-store-connect fetch-signing-files \
+            "$BUNDLE_ID" \
+            --type IOS_APP_STORE \
+            --create \
+            --certificate-key-environment-variable=CM_CERTIFICATE_PRIVATE_KEY 2>&1 || \
           app-store-connect fetch-signing-files \
             "$BUNDLE_ID" \
             --type IOS_APP_STORE \
             --create
           keychain add-certificates
           xcode-project use-profiles
+
+      - name: Force-set development team in Xcode project
+        script: |
+          # Capacitor's generated project sometimes leaves DEVELOPMENT_TEAM blank
+          cd ios/App
+          /usr/libexec/PlistBuddy -c "Print" App.xcodeproj/project.pbxproj 2>/dev/null || true
+          sed -i '' "s/DEVELOPMENT_TEAM = \"\";/DEVELOPMENT_TEAM = $APPLE_TEAM_ID;/g" App.xcodeproj/project.pbxproj || true
+          sed -i '' "s/DEVELOPMENT_TEAM = ;/DEVELOPMENT_TEAM = $APPLE_TEAM_ID;/g" App.xcodeproj/project.pbxproj || true
 
       - name: Install CocoaPods dependencies
         script: |
