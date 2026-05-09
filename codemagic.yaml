@@ -3,12 +3,14 @@ workflows:
     name: Croc Clash – iOS App Store
     max_build_duration: 60
     instance_type: mac_mini_m2
-    integrations:
-      app_store_connect: CrocClashASC
     environment:
-      ios_signing:
-        distribution_type: app_store
-        bundle_identifier: com.brycebeck.crocclash
+      groups:
+        # MUST be created in Codemagic UI: Team -> Environment variables -> Create group "appstore_credentials"
+        # with three SECRET vars:
+        #   APP_STORE_CONNECT_ISSUER_ID = 67eaac88-1eb7-4b0c-8be2-5297ccb1df76
+        #   APP_STORE_CONNECT_KEY_IDENTIFIER = 6F338ZZCFH
+        #   APP_STORE_CONNECT_PRIVATE_KEY = (full .p8 contents incl BEGIN/END lines)
+        - appstore_credentials
       vars:
         APP_STORE_APPLE_ID: 6767337661
         BUNDLE_ID: "com.brycebeck.crocclash"
@@ -53,15 +55,16 @@ workflows:
           agvtool new-version -all $NEW_BUILD_NUMBER
           agvtool new-marketing-version 1.0
 
-      - name: Set up code signing (manual)
+      - name: Set up code signing using env vars
         script: |
           keychain initialize
-          # Fetch the existing distribution cert + the profile we created via API
+          # Explicitly fetch using env vars instead of integration
           app-store-connect fetch-signing-files \
             "$BUNDLE_ID" \
             --type IOS_APP_STORE \
             --create
           keychain add-certificates
+          xcode-project use-profiles
           # Print profile inventory for log clarity
           ls -la ~/Library/MobileDevice/Provisioning\ Profiles/ || true
 
@@ -86,7 +89,9 @@ workflows:
 
     publishing:
       app_store_connect:
-        auth: integration
+        api_key: $APP_STORE_CONNECT_PRIVATE_KEY
+        key_id: $APP_STORE_CONNECT_KEY_IDENTIFIER
+        issuer_id: $APP_STORE_CONNECT_ISSUER_ID
         submit_to_testflight: false
         submit_to_app_store: false
       email:
