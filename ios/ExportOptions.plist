@@ -13,7 +13,7 @@
     <key>provisioningProfiles</key>
     <dict>
         <key>com.brycebeck.crocclash</key>
-        <string>Croc Clash App Store Profile</string>
+        <string>Croc Clash App Store Distribution</string>
     </dict>
     <key>uploadBitcode</key>
     <false/>

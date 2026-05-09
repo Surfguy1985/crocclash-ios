@@ -349,7 +349,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Manual;
 				DEVELOPMENT_TEAM = USZ4L8LG24;
-				PROVISIONING_PROFILE_SPECIFIER = "Croc Clash App Store Profile";
+				PROVISIONING_PROFILE_SPECIFIER = "Croc Clash App Store Distribution";
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Developer";
 				CURRENT_PROJECT_VERSION = 1;
@@ -373,7 +373,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Manual;
 				DEVELOPMENT_TEAM = USZ4L8LG24;
-				PROVISIONING_PROFILE_SPECIFIER = "Croc Clash App Store Profile";
+				PROVISIONING_PROFILE_SPECIFIER = "Croc Clash App Store Distribution";
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Distribution";
 				CURRENT_PROJECT_VERSION = 1;

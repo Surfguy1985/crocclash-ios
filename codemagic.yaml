@@ -15,7 +15,7 @@ workflows:
         XCODE_WORKSPACE: "ios/App/App.xcworkspace"
         XCODE_SCHEME: "App"
         APPLE_TEAM_ID: "USZ4L8LG24"
-        PROFILE_NAME: "Croc Clash App Store Profile"
+        PROFILE_NAME: "Croc Clash App Store Distribution"
       node: 20.11.1
       xcode: latest
       cocoapods: default
