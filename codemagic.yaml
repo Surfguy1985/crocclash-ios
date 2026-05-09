@@ -1,0 +1,91 @@
+workflows:
+  ios-app-store:
+    name: Croc Clash – iOS App Store
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    integrations:
+      app_store_connect: CrocClashASC
+    environment:
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.brycebeck.crocclash
+      vars:
+        APP_STORE_APPLE_ID: 6767337661
+        BUNDLE_ID: "com.brycebeck.crocclash"
+        XCODE_WORKSPACE: "ios/App/App.xcworkspace"
+        XCODE_SCHEME: "App"
+      node: 20.11.1
+      xcode: latest
+      cocoapods: default
+
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: master
+          include: true
+          source: true
+
+    scripts:
+      - name: Install npm deps
+        script: |
+          npm install
+
+      - name: Install Capacitor iOS platform if missing
+        script: |
+          if [ ! -d "ios" ]; then
+            echo "ios/ folder missing — running cap add ios"
+            npx cap add ios
+          fi
+          npx cap sync ios
+          chmod +x scripts/install-ios-assets.sh
+          ./scripts/install-ios-assets.sh
+
+      - name: Bump build number from App Store Connect
+        script: |
+          LATEST_BUILD_NUMBER=$(app-store-connect get-latest-app-store-build-number "$APP_STORE_APPLE_ID" || echo 0)
+          NEW_BUILD_NUMBER=$(($LATEST_BUILD_NUMBER + 1))
+          echo "Setting build number to $NEW_BUILD_NUMBER"
+          cd ios/App
+          agvtool new-version -all $NEW_BUILD_NUMBER
+          agvtool new-marketing-version 1.0
+
+      - name: Set up code signing
+        script: |
+          keychain initialize
+          app-store-connect fetch-signing-files \
+            "$BUNDLE_ID" \
+            --type IOS_APP_STORE \
+            --create
+          keychain add-certificates
+          xcode-project use-profiles
+
+      - name: Install CocoaPods dependencies
+        script: |
+          cd ios/App
+          pod install
+
+      - name: Build .ipa
+        script: |
+          xcode-project build-ipa \
+            --workspace "$XCODE_WORKSPACE" \
+            --scheme "$XCODE_SCHEME" \
+            --config Release
+
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+      - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.app
+      - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.dSYM
+
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: false
+        submit_to_app_store: false
+      email:
+        recipients:
+          - brycebeck85@gmail.com
+        notify:
+          success: true
+          failure: true
