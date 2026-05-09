@@ -1,0 +1,7 @@
+node_modules/
+ios/Pods/
+ios/App/build/
+ios/DerivedData/
+.DS_Store
+app-store-screenshots/
+*.zip

@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1,minimum-scale=1,maximum-scale=1,user-scalable=no"/>
+  <title>CROC CLASH — Branson Pillow Brawl</title>
+  <!-- iOS / Capacitor -->
+  <meta name="theme-color" content="#0a0a14"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+  <meta name="apple-mobile-web-app-title" content="Croc Clash"/>
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png"/>
+  <meta name="description" content="Two crocs enter. One leaves with the good pillow. The wildest pillow brawl in Branson!"/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Fredoka:wght@400;500;600;700&family=Bebas+Neue&display=swap" rel="stylesheet"/>
+  <style>
+    *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+    /* Prevent ALL zoom — double-tap, pinch, click outside buttons */
+    html,body{touch-action:manipulation;-ms-touch-action:manipulation;-webkit-text-size-adjust:100%;overscroll-behavior:none}
+    *{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+    canvas,#gc{touch-action:none}
+    :root{
+      --fd:'Fredoka',sans-serif;
+      --fb:'Space Grotesk',sans-serif;
+      --fh:'Bebas Neue',sans-serif;
+      --p1:#4ade80;--p1d:#166534;--p1g:rgba(74,222,128,.35);
+      --p2:#f472b6;--p2d:#9d174d;--p2g:rgba(244,114,182,.35);
+      --acc:#fbbf24;--gold:#ffd740;
+      --txt:#f0f0f5;--mut:#7a7a95;
+      --bg:#0a0a14;
+    }
+    html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);font-family:var(--fb);color:var(--txt)}
+    canvas{display:block;position:fixed;inset:0;z-index:0}
+
+    /* ══════ GLASS ══════ */
+    .glass{
+      background:rgba(12,12,25,.6);
+      backdrop-filter:blur(22px) saturate(1.6);
+      border:1px solid rgba(255,255,255,.08);
+      border-radius:18px;
+    }
+
+    /* ══════ BUTTONS ══════ */
+    .btn{
+      font-family:var(--fd);font-size:15px;font-weight:600;
+      padding:14px 36px;border:none;border-radius:12px;
+      color:#fff;cursor:pointer;position:relative;overflow:hidden;
+      transition:all .2s cubic-bezier(.16,1,.3,1);letter-spacing:.08em;text-transform:uppercase;
+      outline:none;-webkit-tap-highlight-color:transparent;
+      background:linear-gradient(135deg,rgba(255,255,255,.1) 0%,rgba(255,255,255,.03) 100%);
+      box-shadow:0 1px 0 rgba(255,255,255,.12) inset,0 -1px 0 rgba(0,0,0,.3) inset,0 4px 16px rgba(0,0,0,.4);
+    }
+    .btn::before{content:'';position:absolute;inset:0;border-radius:12px;padding:1px;background:linear-gradient(135deg,rgba(255,255,255,.2),rgba(255,255,255,.02));-webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);-webkit-mask-composite:xor;mask-composite:exclude;pointer-events:none}
+    .btn:hover{transform:translateY(-2px) scale(1.02)}
+    .btn:active{transform:translateY(1px) scale(.98)}
+    .btn:disabled{opacity:.45;cursor:not-allowed;transform:none}
+    .btn-primary{background:linear-gradient(135deg,#d97706,#f59e0b,#fbbf24);color:#1a1a2e;box-shadow:0 1px 0 rgba(255,255,255,.25) inset,0 -1px 0 rgba(0,0,0,.2) inset,0 4px 20px rgba(251,191,36,.3)}
+
+    /* ══════ TITLE ══════ */
+    #title-screen{
+      position:fixed;inset:0;display:flex;flex-direction:column;
+      align-items:center;justify-content:flex-end;z-index:100;
+      background:#050510;overflow:hidden;
+    }
+    #title-screen.hidden{display:none}
+    .poster-bg{position:absolute;inset:0;z-index:0;background:url('poster-tall.webp') center top / contain no-repeat;filter:brightness(0.85) saturate(1.15);background-color:#050510}
+    @media(min-aspect-ratio:1/1){.poster-bg{background-size:cover;background-position:center center}}
+    .poster-vignette{position:absolute;inset:0;z-index:1;background:linear-gradient(180deg,transparent 0%,transparent 30%,rgba(5,5,16,.4) 55%,rgba(5,5,16,.92) 78%,rgba(5,5,16,1) 100%),radial-gradient(ellipse at 50% 40%,transparent 40%,rgba(5,5,16,.4) 100%)}
+    .title-content{position:relative;z-index:2;display:flex;flex-direction:column;align-items:center;gap:10px;padding-bottom:clamp(18px,4vh,42px);width:100%}
+    .tlogo{font-family:var(--fh);font-size:clamp(3.5rem,12vw,8rem);letter-spacing:.1em;line-height:.85;background:linear-gradient(180deg,#fff 0%,#ffd740 35%,#ff9100 70%,#ff3d00 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;filter:drop-shadow(0 0 80px rgba(255,150,0,.4)) drop-shadow(0 4px 0 rgba(0,0,0,.7));text-transform:uppercase;text-align:center}
+    .tsub{font-family:var(--fd);font-size:clamp(11px,1.8vw,16px);color:var(--acc);letter-spacing:.4em;text-transform:uppercase;opacity:.85;text-shadow:0 0 20px rgba(251,191,36,.3)}
+    .ttagline{font-family:var(--fh);font-size:clamp(12px,2vw,18px);color:#ff6b35;letter-spacing:.12em;text-transform:uppercase;text-shadow:0 0 15px rgba(255,107,53,.4);margin-top:-2px}
+    .tbtns{display:flex;gap:16px;flex-wrap:wrap;justify-content:center;margin-top:6px}
+    .tkeys{font-size:clamp(9px,1.2vw,11px);color:var(--mut);text-align:center;line-height:2;max-width:600px;padding:0 16px}
+    .tkeys b{color:var(--txt);font-weight:600}
+    .tver{font-size:10px;color:rgba(255,255,255,.2);letter-spacing:.2em;margin-top:2px}
+    #title-streak{
+      font-family:var(--fh);font-size:clamp(14px,2.5vw,22px);
+      color:var(--gold);letter-spacing:.12em;
+      text-shadow:0 0 18px rgba(255,215,64,.5);
+      display:none;margin-top:2px;
+    }
+    #title-totalwins{font-size:11px;color:var(--mut);letter-spacing:.15em;}
+
+    /* ══════ HUD ══════ */
+    #hud{position:fixed;top:0;left:0;right:0;display:flex;justify-content:space-between;align-items:flex-start;padding:14px 20px;pointer-events:none;z-index:10}
+    #hud.hidden{display:none}
+    .phud{display:flex;flex-direction:column;gap:3px;min-width:190px}
+    .phud.right{align-items:flex-end}
+    .pname{font-family:var(--fh);font-size:18px;letter-spacing:.12em;text-shadow:0 2px 10px rgba(0,0,0,.8);transition:color .2s}
+    .pname.rage{color:#ff3d00;animation:ragePulse .4s ease infinite alternate}
+    @keyframes ragePulse{from{text-shadow:0 0 10px rgba(255,61,0,.8)}to{text-shadow:0 0 30px rgba(255,61,0,.4)}}
+    .p1c{color:var(--p1)}.p2c{color:var(--p2)}
+
+    /* HP Pips */
+    .hp-pips{display:flex;gap:5px;align-items:center}
+    .phud.right .hp-pips{flex-direction:row-reverse}
+    .pip{width:22px;height:22px;border-radius:6px;border:2px solid rgba(255,255,255,.15);transition:all .3s cubic-bezier(.16,1,.3,1);position:relative;overflow:hidden}
+    .pip::after{content:'';position:absolute;inset:0;border-radius:4px;background:linear-gradient(180deg,rgba(255,255,255,.25) 0%,transparent 40%)}
+    .pip.p1pip.full{background:linear-gradient(135deg,#059669,#34d399);border-color:rgba(74,222,128,.4);box-shadow:0 0 8px rgba(74,222,128,.3)}
+    .pip.p2pip.full{background:linear-gradient(135deg,#be185d,#f472b6);border-color:rgba(244,114,182,.4);box-shadow:0 0 8px rgba(244,114,182,.3)}
+    .pip.empty{background:rgba(255,255,255,.05);border-color:rgba(255,255,255,.08)}
+    .pip.full{animation:pipPop .3s cubic-bezier(.16,1,.3,1)}
+    @keyframes pipPop{0%{transform:scale(1.4)}100%{transform:scale(1)}}
+
+    .hstats{font-size:10px;color:var(--mut);font-variant-numeric:tabular-nums lining-nums}
+    .launch-cd{font-family:var(--fh);font-size:12px;color:var(--mut);letter-spacing:.08em;margin-top:2px}
+    .launch-cd.ready{color:var(--gold);text-shadow:0 0 10px rgba(255,215,64,.4);animation:launchPulse 1s ease infinite alternate}
+    @keyframes launchPulse{from{opacity:.7}to{opacity:1}}
+    .rage-cd{font-family:var(--fh);font-size:12px;color:var(--mut);letter-spacing:.08em;margin-top:2px}
+    .rage-cd.ready{color:#ff3d00;text-shadow:0 0 12px rgba(255,61,0,.5);animation:rageCDPulse 1s ease infinite alternate}
+    @keyframes rageCDPulse{from{opacity:.7;text-shadow:0 0 8px rgba(255,61,0,.4)}to{opacity:1;text-shadow:0 0 18px rgba(255,61,0,.6)}}
+    .pow-cd-row{display:flex;gap:6px;font-family:var(--fh);font-size:10px;letter-spacing:.06em;color:var(--mut);margin-top:2px;flex-wrap:wrap}
+    .phud.right .pow-cd-row{justify-content:flex-end}
+
+    .hcenter{display:flex;flex-direction:column;align-items:center;gap:2px}
+    .hround{font-family:var(--fh);font-size:15px;color:var(--gold);letter-spacing:.15em;text-shadow:0 0 12px rgba(255,215,64,.3)}
+    .htimer{font-family:var(--fh);font-size:38px;color:var(--txt);text-shadow:0 2px 16px rgba(0,0,0,.6);font-variant-numeric:tabular-nums;letter-spacing:.05em}
+    .htimer.warn{color:#f87171;animation:tpulse .3s ease infinite alternate}
+    @keyframes tpulse{from{opacity:1;text-shadow:0 0 24px rgba(248,113,113,.5)}to{opacity:.3;text-shadow:none}}
+    .combo-hud{font-family:var(--fh);font-size:13px;color:var(--acc);letter-spacing:.1em;min-height:16px;text-shadow:0 0 10px rgba(251,191,36,.4)}
+
+    /* ══════ ON-SCREEN KEY LEGEND (desktop only) ══════ */
+    #key-legend{position:fixed;bottom:10px;left:0;right:0;display:none;justify-content:space-between;padding:0 16px;pointer-events:none;z-index:11;gap:20px}
+    @media(pointer:fine){#key-legend.show{display:flex}}
+    .kleg{display:flex;flex-wrap:wrap;gap:3px 8px;align-items:center;background:rgba(6,6,14,.55);backdrop-filter:blur(4px);border:1px solid rgba(255,255,255,.06);border-radius:8px;padding:5px 10px;max-width:48%}
+    .kleg.right{margin-left:auto;justify-content:flex-end}
+    .kleg-title{width:100%;font-family:var(--fh);font-size:9px;letter-spacing:.15em;margin-bottom:1px;opacity:.6}
+    .kleg-title.p1t{color:var(--p1)}.kleg-title.p2t{color:var(--p2)}
+    .kleg-item{display:flex;align-items:center;gap:3px;font-size:9px;color:rgba(255,255,255,.55);letter-spacing:.04em;white-space:nowrap}
+    .kleg-item kbd{display:inline-block;min-width:16px;padding:1px 4px;text-align:center;font-family:var(--fh);font-size:9px;color:rgba(255,255,255,.8);background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.15);border-radius:3px;line-height:1.3}
+
+    /* ══════ VIDEO OVERLAY ══════ */
+    #special-video, #special-video-b{
+      position:fixed;inset:0;width:100%;height:100%;z-index:25;
+      object-fit:contain;display:none;background:#000;
+      opacity:0;transition:opacity .35s cubic-bezier(.4,0,.2,1);
+    }
+    #special-video-b{z-index:24;}
+    /* Hide native play button / controls on all browsers */
+    #special-video::-webkit-media-controls,
+    #special-video::-webkit-media-controls-enclosure,
+    #special-video::-webkit-media-controls-start-playback-button,
+    #special-video::-webkit-media-controls-panel,
+    #special-video-b::-webkit-media-controls,
+    #special-video-b::-webkit-media-controls-enclosure,
+    #special-video-b::-webkit-media-controls-start-playback-button,
+    #special-video-b::-webkit-media-controls-panel{
+      display:none !important;-webkit-appearance:none !important;
+    }
+    #special-video::-moz-media-controls,
+    #special-video-b::-moz-media-controls{display:none !important;}
+    video::-webkit-media-controls-overlay-play-button{display:none !important;}
+    /* Match intro crossfade — longer, smoother dissolve */
+    #special-video.intro-fade, #special-video-b.intro-fade{
+      transition: opacity 1.5s cubic-bezier(.4,0,.2,1) !important;
+    }
+    /* vidIn removed — using CSS opacity transition instead */
+
+    /* ══════ RESULT ══════ */
+    #result-screen{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:100;gap:16px}
+    #result-screen.hidden{display:none}
+    .res-bg{position:absolute;inset:0;background:rgba(6,6,14,.92);backdrop-filter:blur(8px)}
+    .res-content{position:relative;z-index:2;display:flex;flex-direction:column;align-items:center;gap:14px}
+    .res-winner{font-family:var(--fh);font-size:clamp(1.4rem,4vw,2.6rem);letter-spacing:.06em;text-transform:uppercase;text-align:center;line-height:1.2;max-width:85vw}
+    .res-score{font-family:var(--fh);font-size:28px;color:var(--mut);letter-spacing:.15em}
+    .res-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px 32px;text-align:center}
+    .res-grid .v{font-family:var(--fh);font-size:22px;color:var(--txt)}
+    .res-grid .l{font-size:9px;color:var(--mut);letter-spacing:.12em;text-transform:uppercase}
+    .res-btns{display:flex;gap:14px;margin-top:8px}
+    #res-streak{font-family:var(--fh);font-size:18px;color:var(--gold);letter-spacing:.1em;text-shadow:0 0 14px rgba(255,215,64,.4);display:none;text-align:center}
+
+    /* ══════ LOADOUT SCREEN ══════ */
+    #loadout-screen{
+      position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+      z-index:110;background:rgba(5,5,16,.88);backdrop-filter:blur(18px);
+    }
+    #loadout-screen.hidden{display:none}
+    .lo-bg{position:absolute;inset:0;background:radial-gradient(ellipse at 50% 30%,rgba(74,222,128,.06) 0%,transparent 60%),radial-gradient(ellipse at 50% 70%,rgba(244,114,182,.06) 0%,transparent 60%)}
+    .lo-content{
+      position:relative;z-index:2;
+      width:min(760px,95vw);max-height:92vh;
+      padding:28px 28px 22px;
+      overflow-y:auto;
+      display:flex;flex-direction:column;gap:14px;
+      scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.1) transparent;
+    }
+    .lo-title{font-family:var(--fh);font-size:clamp(1.4rem,4vw,2rem);letter-spacing:.1em;text-align:center;text-transform:uppercase}
+    .lo-subtitle{font-family:var(--fd);font-size:13px;color:var(--mut);text-align:center;letter-spacing:.2em;text-transform:uppercase;margin-top:-8px}
+    .lo-section-label{font-family:var(--fh);font-size:13px;color:var(--mut);letter-spacing:.25em;text-transform:uppercase;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.06)}
+
+    /* Power cards */
+    .lo-powers{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+    @media(max-width:560px){.lo-powers{grid-template-columns:repeat(2,1fr)}}
+    .lo-power-card{
+      background:rgba(255,255,255,.04);
+      border:1.5px solid rgba(255,255,255,.07);
+      border-radius:12px;
+      padding:12px 10px;
+      cursor:pointer;
+      display:flex;flex-direction:column;align-items:center;gap:5px;
+      transition:all .18s cubic-bezier(.16,1,.3,1);
+      user-select:none;-webkit-tap-highlight-color:transparent;
+    }
+    .lo-power-card:hover{background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.15);transform:translateY(-2px)}
+    .lo-power-card.selected{
+      background:rgba(255,215,64,.12);
+      border-color:#ffd740;
+      box-shadow:0 0 20px rgba(255,215,64,.2),0 1px 0 rgba(255,215,64,.3) inset;
+    }
+    .lo-power-icon{font-size:28px;line-height:1}
+    .lo-power-name{font-family:var(--fh);font-size:14px;letter-spacing:.06em;color:var(--txt);text-align:center}
+    .lo-power-desc{font-size:10px;color:var(--mut);text-align:center;line-height:1.3}
+    .lo-power-cd{font-size:10px;color:var(--acc);letter-spacing:.08em;font-family:var(--fh)}
+
+    /* Skin cards */
+    .lo-skins{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+    .lo-skin-card{
+      background:rgba(255,255,255,.04);
+      border:1.5px solid rgba(255,255,255,.07);
+      border-radius:10px;
+      padding:10px 14px;
+      cursor:pointer;
+      display:flex;flex-direction:column;align-items:center;gap:4px;
+      min-width:80px;
+      transition:all .18s cubic-bezier(.16,1,.3,1);
+      user-select:none;-webkit-tap-highlight-color:transparent;
+    }
+    .lo-skin-card:hover:not(.locked){background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.15);transform:translateY(-2px)}
+    .lo-skin-card.selected{background:rgba(255,215,64,.12);border-color:#ffd740;box-shadow:0 0 18px rgba(255,215,64,.18)}
+    .lo-skin-card.locked{opacity:.5;cursor:not-allowed;filter:grayscale(.7)}
+    .lo-skin-preview{font-size:26px;line-height:1}
+    .lo-skin-name{font-family:var(--fh);font-size:12px;letter-spacing:.05em;color:var(--txt)}
+    .lo-skin-lock{font-size:9px;color:var(--mut);letter-spacing:.06em}
+
+    .lo-hint{font-family:var(--fd);font-size:12px;color:var(--mut);text-align:center;min-height:14px}
+    .lo-fight-btn{align-self:center;font-size:17px;padding:15px 48px;margin-top:4px}
+
+    /* ══════ TOUCH CONTROLS — 2-PLAYER SPLIT SCREEN ══════ */
+    /* P1 controls: left half — single player mode (vs AI) */
+    #touch-controls{position:fixed;bottom:0;left:0;right:0;display:none;justify-content:space-between;align-items:flex-end;padding:10px 12px 14px;z-index:20}
+    #touch-controls.mode-2p{display:none !important} /* hidden in 2P mode — we use split controls */
+
+    /* 2-PLAYER SPLIT TOUCH CONTROLS */
+    #touch-2p{position:fixed;bottom:0;left:0;right:0;display:none;z-index:20;pointer-events:none}
+    #touch-2p.active{display:flex}
+    #touch-2p .tp-half{
+      width:50%;display:flex;justify-content:space-between;align-items:flex-end;
+      padding:8px 8px 12px;pointer-events:auto;position:relative;
+    }
+    #touch-2p .tp-half.p1-half{border-right:1px solid rgba(74,222,128,.15)}
+    #touch-2p .tp-half.p2-half{border-left:1px solid rgba(244,114,182,.15)}
+    .tp-label{
+      position:absolute;top:4px;left:50%;transform:translateX(-50%);
+      font-family:var(--fh);font-size:10px;letter-spacing:.15em;
+      opacity:.45;pointer-events:none;
+    }
+    .tp-label.p1l{color:var(--p1)}
+    .tp-label.p2l{color:var(--p2)}
+
+    .tdpad{position:relative;width:120px;height:120px;flex-shrink:0}
+    .dpad-ring{position:absolute;inset:0;border-radius:50%;background:rgba(255,255,255,.03);border:1.5px solid rgba(255,255,255,.08)}
+    @media (pointer:fine){.dpad-ring{box-shadow:0 0 20px rgba(0,0,0,.4) inset}}
+    .dpad-btn{position:absolute;width:42px;height:42px;border-radius:12px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);color:rgba(255,255,255,.7);font-size:16px;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;user-select:none;touch-action:manipulation;will-change:opacity}
+    .dpad-btn:active{background:rgba(255,255,255,.22);opacity:.85}
+    .dpad-btn.up{top:0;left:50%;transform:translateX(-50%)}
+    .dpad-btn.down{bottom:0;left:50%;transform:translateX(-50%)}
+    .dpad-btn.left{left:0;top:50%;transform:translateY(-50%)}
+    .dpad-btn.right{right:0;top:50%;transform:translateY(-50%)}
+    .abtns{display:flex;flex-direction:column;gap:4px;align-items:flex-end}
+    .arow{display:flex;gap:4px}
+    .abtn{
+      width:52px;height:48px;border-radius:14px;
+      font-family:var(--fh);font-size:9px;letter-spacing:.04em;
+      display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;
+      -webkit-tap-highlight-color:transparent;user-select:none;touch-action:manipulation;
+      border:none;color:#fff;position:relative;overflow:hidden;
+      will-change:opacity;
+    }
+    .abtn:active{opacity:.8}
+    .abtn .icon{font-size:16px;line-height:1}
+    .abtn .plabel{font-size:8px;letter-spacing:.03em;opacity:.85}
+    .abtn.at{background:rgba(220,38,38,.45)}
+    .abtn.da{background:rgba(22,163,74,.35)}
+    .abtn.pa{background:rgba(109,40,217,.35)}
+    .abtn.la{background:rgba(245,158,11,.45)}
+    .abtn.pw1{background:rgba(59,130,246,.4)}
+    .abtn.pw2{background:rgba(190,24,93,.35)}
+    .abtn.pw3{background:rgba(245,158,11,.4)}
+    .abtn.pw4{background:rgba(139,92,246,.4)}
+    .abtn.rg{background:rgba(200,20,0,.55);min-width:110px}
+    /* Desktop: restore gradients and box-shadows */
+    @media (pointer:fine){
+      .abtn.at{background:linear-gradient(135deg,rgba(239,68,68,.4),rgba(220,38,38,.5))}
+      .abtn.da{background:linear-gradient(135deg,rgba(74,222,128,.3),rgba(22,163,74,.4))}
+      .abtn.pa{background:linear-gradient(135deg,rgba(139,92,246,.3),rgba(109,40,217,.4))}
+      .abtn.la{background:linear-gradient(135deg,rgba(255,215,64,.4),rgba(245,158,11,.5));box-shadow:0 2px 12px rgba(255,215,64,.2),0 1px 0 rgba(255,255,255,.15) inset}
+      .abtn.pw1{background:linear-gradient(135deg,rgba(147,197,253,.35),rgba(59,130,246,.45));box-shadow:0 2px 10px rgba(147,197,253,.2),0 1px 0 rgba(255,255,255,.12) inset}
+      .abtn.pw2{background:linear-gradient(135deg,rgba(244,114,182,.3),rgba(190,24,93,.4))}
+      .abtn.pw3{background:linear-gradient(135deg,rgba(251,191,36,.35),rgba(245,158,11,.45));box-shadow:0 2px 10px rgba(251,191,36,.2),0 1px 0 rgba(255,255,255,.12) inset}
+      .abtn.pw4{background:linear-gradient(135deg,rgba(167,139,250,.35),rgba(139,92,246,.45));box-shadow:0 2px 10px rgba(167,139,250,.2),0 1px 0 rgba(255,255,255,.12) inset}
+      .abtn.rg{background:linear-gradient(135deg,rgba(255,61,0,.5),rgba(200,20,0,.6));box-shadow:0 2px 14px rgba(255,61,0,.3),0 1px 0 rgba(255,255,255,.15) inset}
+    }
+    .abtn.rg .plabel{font-weight:700;letter-spacing:.06em}
+
+    /* AI mode: single-player controls (bigger buttons) */
+    #touch-controls .tdpad{width:140px;height:140px}
+    #touch-controls .dpad-btn{width:48px;height:48px;border-radius:14px;font-size:18px}
+    #touch-controls .abtn{width:64px;height:58px;border-radius:16px;font-size:10px}
+    #touch-controls .abtn .icon{font-size:20px}
+    #touch-controls .abtn .plabel{font-size:9px}
+    #touch-controls .arow{gap:6px}
+    #touch-controls .abtns{gap:6px}
+
+    @media(pointer:coarse){#touch-controls{display:flex}}
+    /* ══════ ONLINE LOBBY ══════ */
+    #online-lobby{
+      position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+      z-index:110;background:rgba(5,5,16,.92);backdrop-filter:blur(12px);
+    }
+    #online-lobby.hidden{display:none}
+    #lobby-code-input::placeholder{color:rgba(255,255,255,.2)}
+    #lobby-code-input:focus{border-color:var(--acc);box-shadow:0 0 16px rgba(251,191,36,.15)}
+    .lobby-dots{animation:lobbyPulse 1.5s ease infinite}
+    @keyframes lobbyPulse{0%,100%{opacity:.3}50%{opacity:1}}
+
+    @media(max-width:600px){
+      .pip{width:14px;height:14px;border-radius:3px}.hp-pips{gap:3px}
+      #hud{padding:8px 6px}.phud{min-width:0;max-width:40%}
+      .pname{font-size:11px;letter-spacing:.06em}
+      .hstats{font-size:9px}.launch-cd{font-size:9px}
+      .combo-hud{font-size:10px}.htimer{font-size:26px}.hround{font-size:10px;letter-spacing:.06em}
+      .pow-cd-row{font-size:8px}
+      .rage-cd{font-size:9px}
+      .tdpad{width:100px;height:100px}
+      .dpad-btn{width:36px;height:36px;border-radius:10px;font-size:14px}
+      .abtn{width:46px;height:42px;border-radius:12px;font-size:8px}
+      .abtn .icon{font-size:14px}
+      .abtn .plabel{font-size:7px}
+      #touch-controls .tdpad{width:120px;height:120px}
+      #touch-controls .dpad-btn{width:42px;height:42px;font-size:16px}
+      #touch-controls .abtn{width:56px;height:50px}
+      #touch-controls .abtn .icon{font-size:18px}
+    }
+    /* ══ Controls Settings ══ */
+    #controls-screen.hidden{display:none!important}
+    #name-entry.hidden{display:none!important}
+    #name-input:focus{border-color:var(--gold);box-shadow:0 0 16px rgba(255,215,64,.25)}
+    .bind-section{background:rgba(255,255,255,.04);border-radius:10px;padding:14px 16px;border:1px solid rgba(255,255,255,.06)}
+    .bind-section h3{font-family:var(--fh);font-size:1rem;letter-spacing:.06em;margin:0 0 10px;text-align:center}
+    .bind-row{display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.04)}
+    .bind-row:last-child{border-bottom:none}
+    .bind-label{font-size:.82rem;color:rgba(255,255,255,.7);font-family:var(--fh);letter-spacing:.04em}
+    .bind-key{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);border-radius:6px;padding:4px 12px;font-family:var(--fh);font-size:.85rem;color:#fff;cursor:pointer;min-width:48px;text-align:center;transition:all .15s}
+    .bind-key:hover{background:rgba(251,191,36,.15);border-color:rgba(251,191,36,.4)}
+    .bind-key.listening{background:rgba(251,191,36,.25);border-color:#fbbf24;color:#fbbf24;animation:blink-bind .6s ease infinite alternate}
+    @keyframes blink-bind{from{opacity:1}to{opacity:.5}}
+  </style>
+</head>
+<body>
+  <canvas id="gc"></canvas>
+
+  <!-- Special move video overlay — autoplay, no controls, embedded look -->
+  <video id="special-video" playsinline preload="auto" disablepictureinpicture controlslist="nodownload nofullscreen noremoteplayback"></video>
+
+  <!-- ══════ NAME ENTRY OVERLAY ══════ -->
+  <div id="name-entry" class="hidden" style="position:fixed;inset:0;z-index:9999;align-items:center;justify-content:center;background:radial-gradient(ellipse at center,rgba(10,15,10,.95),rgba(0,0,0,.98))">
+    <div style="text-align:center;padding:32px;max-width:380px;width:90%">
+      <div style="font-family:var(--fh);font-size:2.2rem;color:var(--gold);text-shadow:0 0 20px rgba(255,215,64,.3);margin-bottom:8px">🐊 CROC CLASH</div>
+      <div style="font-family:var(--fd);font-size:.95rem;color:var(--mut);margin-bottom:24px;letter-spacing:.05em">ENTER YOUR FIGHTER NAME</div>
+      <input id="name-input" type="text" maxlength="12" placeholder="Your name..." autocomplete="off" spellcheck="false" style="width:100%;box-sizing:border-box;padding:14px 18px;font-family:var(--fh);font-size:1.3rem;letter-spacing:.08em;text-align:center;text-transform:uppercase;color:var(--gold);background:rgba(255,255,255,.06);border:2px solid rgba(255,215,64,.4);border-radius:12px;outline:none;caret-color:var(--gold)">
+      <div id="name-error" style="font-family:var(--fd);font-size:.8rem;color:#f87171;margin-top:6px;min-height:18px"></div>
+      <button id="name-confirm" class="btn btn-primary" style="margin-top:16px;padding:14px 40px;font-size:1.1rem;letter-spacing:.08em;width:100%">LET'S BRAWL 🥊</button>
+      <div style="font-family:var(--fd);font-size:.7rem;color:var(--mut);margin-top:12px;opacity:.6">2–12 characters • shown on leaderboard</div>
+    </div>
+  </div>
+
+  <!-- ══════ TITLE SCREEN ══════ -->
+  <div id="title-screen">
+    <div class="poster-bg"></div>
+    <div class="poster-vignette"></div>
+    <div class="title-content">
+      <div class="tlogo">Croc Clash</div>
+      <div class="tsub">Branson Pillow Brawl</div>
+      <div class="ttagline">Two crocs enter. One leaves with the good pillow.</div>
+      <div id="title-streak"></div>
+      <div id="title-totalwins"></div>
+      <div class="tbtns">
+        <button class="btn btn-primary" id="btn-online">🌐 ONLINE</button>
+        <button class="btn" id="btn-arena" style="background:linear-gradient(135deg,rgba(74,222,128,.3),rgba(22,163,74,.4));padding:14px 24px">🗺️ ARENA</button>
+        <button class="btn" id="btn-ranks" style="background:linear-gradient(135deg,rgba(255,215,64,.3),rgba(245,158,11,.4));padding:14px 24px">🏆 RANKS</button>
+        <button class="btn btn-primary" id="btn-ai">🐊 vs AI 🤖</button>
+      </div>
+      <button class="btn" id="btn-install" style="display:none;background:linear-gradient(135deg,rgba(99,102,241,.4),rgba(168,85,247,.5));padding:14px 28px;margin-top:10px;font-size:1.1rem;letter-spacing:.06em;border:2px solid rgba(168,85,247,.6)">📲 INSTALL APP</button>
+      <div class="tkeys" id="controls-display"></div>
+      <button class="btn" id="btn-controls" style="background:linear-gradient(135deg,rgba(59,130,246,.35),rgba(99,102,241,.45));padding:10px 22px;margin-top:6px;font-size:.85rem;letter-spacing:.06em;border:2px solid rgba(99,102,241,.5)">🎮 CUSTOMIZE CONTROLS</button>
+      <button class="btn" id="btn-changename" style="background:linear-gradient(135deg,rgba(168,85,247,.3),rgba(124,58,237,.4));padding:8px 18px;margin-top:4px;font-size:.8rem;letter-spacing:.06em;border:1.5px solid rgba(168,85,247,.5)">✏️ CHANGE NAME</button>
+      <div id="rotate-hint" style="display:none;margin-top:10px;padding:8px 16px;background:rgba(255,255,255,.06);border:1px solid rgba(255,215,64,.25);border-radius:10px;text-align:center">
+        <span style="font-size:1.3rem">📱↔️</span>
+        <div style="font-family:var(--fd);font-size:.7rem;color:var(--gold);letter-spacing:.05em;margin-top:2px">TURN PHONE SIDEWAYS FOR BETTER GAMEPLAY</div>
+      </div>
+      <div id="title-playername" style="font-family:var(--fh);font-size:.85rem;color:var(--gold);letter-spacing:.08em;margin-top:6px;text-shadow:0 0 10px rgba(255,215,64,.2)"></div>
+      <div class="tver">V13.9 — COLOSSEUM FINALE</div>
+    </div>
+  </div>
+
+  <!-- ══════ LOADOUT SCREEN (dynamically rendered by JS) ══════ -->
+  <div id="loadout-screen" class="hidden"></div>
+
+  <!-- ══════ HUD ══════ -->
+  <div id="hud" class="hidden">
+    <div class="phud">
+      <div class="pname p1c" id="p1name">GATOR GARY</div>
+      <div class="hp-pips" id="p1pips"></div>
+      <div class="hstats" id="p1s">Wins 0</div>
+      <div class="launch-cd" id="p1launch">🎯 READY</div>
+      <div class="pow-cd-row"><span id="p1pow1"></span><span id="p1pow2"></span><span id="p1pow3"></span><span id="p1pow4"></span></div>
+      <div class="rage-cd ready" id="p1rage">💀 READY</div>
+      <div class="combo-hud" id="p1combo"></div>
+    </div>
+    <div class="hcenter">
+      <div class="hround" id="hround">ROUND 1</div>
+      <div class="htimer" id="htimer">45</div>
+    </div>
+    <div class="phud right">
+      <div class="pname p2c" id="p2name">CROC CARL</div>
+      <div class="hp-pips" id="p2pips"></div>
+      <div class="hstats" id="p2s">Wins 0</div>
+      <div class="launch-cd" id="p2launch">🎯 READY</div>
+      <div class="pow-cd-row"><span id="p2pow1"></span><span id="p2pow2"></span></div>
+      <div class="rage-cd ready" id="p2rage">💀 READY</div>
+      <div class="combo-hud" id="p2combo"></div>
+    </div>
+  </div>
+
+  <!-- ══════ ON-SCREEN KEY LEGEND (desktop only) ══════ -->
+  <div id="key-legend">
+    <div class="kleg" id="kleg-p1"></div>
+    <div class="kleg right" id="kleg-p2"></div>
+  </div>
+
+  <!-- ══════ RESULT SCREEN ══════ -->
+  <div id="result-screen" class="hidden">
+    <div class="res-bg"></div>
+    <div class="res-content glass" style="padding:32px 40px;gap:16px">
+      <div class="res-winner" id="res-winner"></div>
+      <div class="res-score" id="res-score"></div>
+      <div id="res-streak"></div>
+      <div class="res-grid" id="res-grid"></div>
+      <div class="res-btns" style="flex-wrap:wrap">
+        <button class="btn btn-primary" id="btn-rematch">🐊 REMATCH</button>
+        <button class="btn" id="btn-share-clip" style="background:linear-gradient(135deg,#ff3d9a,#ff6b35)">📲 SHARE KO</button>
+        <button class="btn" id="btn-leaderboard" style="background:linear-gradient(135deg,rgba(74,222,128,.3),rgba(22,163,74,.4))">🏆 RANKS</button>
+        <button class="btn" id="btn-menu2">MENU</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════ TOUCH CONTROLS — SINGLE PLAYER (vs AI) ══════ -->
+  <div id="touch-controls">
+    <div class="tdpad">
+      <div class="dpad-ring"></div>
+      <div class="dpad-btn up" data-dir="up">▲</div>
+      <div class="dpad-btn down" data-dir="down">▼</div>
+      <div class="dpad-btn left" data-dir="left">◄</div>
+      <div class="dpad-btn right" data-dir="right">►</div>
+    </div>
+    <div class="abtns">
+      <div class="arow">
+        <div class="abtn at" data-action="attack"><span class="icon">👊</span><span class="plabel">SMACK</span></div>
+        <div class="abtn pa" data-action="parry"><span class="icon">🛡️</span><span class="plabel">PARRY</span></div>
+      </div>
+      <div class="arow">
+        <div class="abtn da" data-action="dash"><span class="icon">💨</span><span class="plabel">DASH</span></div>
+        <div class="abtn pw1" id="touch-power1" data-action="power1"><span class="icon">❄️</span><span class="plabel">POWER1</span></div>
+      </div>
+      <div class="arow">
+        <div class="abtn pw2" id="touch-power2" data-action="power2"><span class="icon">🎷</span><span class="plabel">POWER2</span></div>
+        <div class="abtn la" data-action="launch"><span class="icon">🎯</span><span class="plabel">LAUNCH</span></div>
+      </div>
+      <div class="arow">
+        <div class="abtn rg" data-action="rage"><span class="icon">💀</span><span class="plabel">RAGE</span></div>
+        <div class="abtn pw3" id="touch-power3" data-action="power3" style="display:none"><span class="icon">⚡</span><span class="plabel">POWER3</span></div>
+      </div>
+      <div class="arow">
+        <div class="abtn pw4" id="touch-power4" data-action="power4" style="display:none"><span class="icon">⚡</span><span class="plabel">POWER4</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════ 2-PLAYER SPLIT TOUCH CONTROLS ══════ -->
+  <div id="touch-2p">
+    <!-- P1 (LEFT HALF) -->
+    <div class="tp-half p1-half">
+      <span class="tp-label p1l">P1 GARY</span>
+      <div class="tdpad">
+        <div class="dpad-ring"></div>
+        <div class="dpad-btn up" data-p="1" data-dir="up">▲</div>
+        <div class="dpad-btn down" data-p="1" data-dir="down">▼</div>
+        <div class="dpad-btn left" data-p="1" data-dir="left">◄</div>
+        <div class="dpad-btn right" data-p="1" data-dir="right">►</div>
+      </div>
+      <div class="abtns">
+        <div class="arow">
+          <div class="abtn at" data-p="1" data-action="attack"><span class="icon">👊</span><span class="plabel">SMACK</span></div>
+          <div class="abtn la" data-p="1" data-action="launch"><span class="icon">🎯</span><span class="plabel">LAUNCH</span></div>
+        </div>
+        <div class="arow">
+          <div class="abtn da" data-p="1" data-action="dash"><span class="icon">💨</span><span class="plabel">DASH</span></div>
+          <div class="abtn pa" data-p="1" data-action="parry"><span class="icon">🛡️</span><span class="plabel">PARRY</span></div>
+        </div>
+        <div class="arow">
+          <div class="abtn pw1" data-p="1" data-action="power1" id="tp1-pow1"><span class="icon">❄️</span><span class="plabel">PWR1</span></div>
+          <div class="abtn pw2" data-p="1" data-action="power2" id="tp1-pow2"><span class="icon">🎷</span><span class="plabel">PWR2</span></div>
+        </div>
+        <div class="arow">
+          <div class="abtn rg" data-p="1" data-action="rage"><span class="icon">💀</span><span class="plabel">RAGE</span></div>
+        </div>
+      </div>
+    </div>
+    <!-- P2 (RIGHT HALF) -->
+    <div class="tp-half p2-half">
+      <span class="tp-label p2l">P2 CARL</span>
+      <div class="abtns" style="align-items:flex-start">
+        <div class="arow">
+          <div class="abtn la" data-p="2" data-action="launch"><span class="icon">🎯</span><span class="plabel">LAUNCH</span></div>
+          <div class="abtn at" data-p="2" data-action="attack"><span class="icon">👊</span><span class="plabel">SMACK</span></div>
+        </div>
+        <div class="arow">
+          <div class="abtn pa" data-p="2" data-action="parry"><span class="icon">🛡️</span><span class="plabel">PARRY</span></div>
+          <div class="abtn da" data-p="2" data-action="dash"><span class="icon">💨</span><span class="plabel">DASH</span></div>
+        </div>
+        <div class="arow">
+          <div class="abtn pw1" data-p="2" data-action="power1" id="tp2-pow1"><span class="icon">⚡</span><span class="plabel">PWR1</span></div>
+          <div class="abtn pw2" data-p="2" data-action="power2" id="tp2-pow2"><span class="icon">❓</span><span class="plabel">PWR2</span></div>
+        </div>
+        <div class="arow">
+          <div class="abtn rg" data-p="2" data-action="rage"><span class="icon">💀</span><span class="plabel">RAGE</span></div>
+        </div>
+      </div>
+      <div class="tdpad">
+        <div class="dpad-ring"></div>
+        <div class="dpad-btn up" data-p="2" data-dir="up">▲</div>
+        <div class="dpad-btn down" data-p="2" data-dir="down">▼</div>
+        <div class="dpad-btn left" data-p="2" data-dir="left">◄</div>
+        <div class="dpad-btn right" data-p="2" data-dir="right">►</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════ ONLINE LOBBY ══════ -->
+  <div id="online-lobby" class="hidden">
+    <div class="res-bg"></div>
+    <div class="res-content glass" style="padding:32px 40px;gap:18px;min-width:320px;max-width:440px">
+      <div style="font-family:var(--fh);font-size:clamp(1.6rem,4vw,2.4rem);letter-spacing:.08em;text-align:center;color:var(--acc)">🌐 ONLINE MATCH</div>
+      <div id="lobby-status" style="font-family:var(--fd);font-size:14px;color:var(--mut);text-align:center;min-height:20px">Connecting…</div>
+      <div id="lobby-room-code" style="font-family:var(--fh);font-size:clamp(2rem,6vw,3.4rem);letter-spacing:.2em;color:var(--txt);text-align:center;display:none"></div>
+      <div id="lobby-actions" style="display:flex;flex-direction:column;gap:12px;align-items:center;width:100%">
+        <button class="btn btn-primary" id="lobby-create" style="width:100%" disabled>CREATE ROOM</button>
+        <div style="font-family:var(--fd);font-size:12px;color:var(--mut);letter-spacing:.15em">— OR —</div>
+        <div style="display:flex;gap:8px;width:100%">
+          <input id="lobby-code-input" type="text" maxlength="4" placeholder="CODE" style="flex:1;font-family:var(--fh);font-size:22px;letter-spacing:.25em;text-align:center;padding:12px;border-radius:10px;border:1.5px solid rgba(255,255,255,.12);background:rgba(255,255,255,.06);color:#fff;outline:none;text-transform:uppercase" />
+          <button class="btn btn-primary" id="lobby-join" style="padding:12px 24px" disabled>JOIN</button>
+        </div>
+      </div>
+      <div id="lobby-waiting" style="display:none;text-align:center">
+        <div style="font-family:var(--fd);font-size:14px;color:var(--p1);margin-bottom:8px">Waiting for opponent…</div>
+        <div class="lobby-dots" style="font-size:24px;color:var(--acc)">⏳</div>
+        <button class="btn btn-primary" id="lobby-share" style="margin-top:12px;font-size:13px;padding:12px 32px">📲 SEND INVITE LINK</button>
+        <div id="lobby-copied" style="font-family:var(--fd);font-size:12px;color:var(--p1);margin-top:6px;min-height:16px"></div>
+      </div>
+      <div id="lobby-error" style="font-family:var(--fd);font-size:13px;color:#f87171;text-align:center;min-height:16px"></div>
+      <button class="btn" id="lobby-back" style="font-size:12px;padding:10px 28px">← BACK</button>
+    </div>
+  </div>
+
+  <!-- ══════ LEADERBOARD OVERLAY ══════ -->
+  <div id="leaderboard-screen" class="hidden" style="position:fixed;inset:0;display:none;align-items:center;justify-content:center;z-index:120;background:rgba(5,5,16,.92);backdrop-filter:blur(12px)">
+    <div class="glass" style="padding:28px 32px;max-width:500px;width:90%;max-height:85vh;overflow-y:auto">
+      <div style="font-family:var(--fh);font-size:clamp(1.2rem,3vw,1.8rem);letter-spacing:.1em;color:var(--acc);text-align:center;margin-bottom:12px">🏆 WEEKLY LEADERBOARD</div>
+      <div id="lb-season" style="font-family:var(--fd);font-size:11px;color:var(--mut);text-align:center;letter-spacing:.2em;margin-bottom:12px"></div>
+      <div id="lb-list" style="display:flex;flex-direction:column;gap:4px"></div>
+      <div style="margin-top:16px;text-align:center;border-top:1px solid rgba(255,255,255,.06);padding-top:12px">
+        <div style="font-family:var(--fh);font-size:14px;color:var(--mut);letter-spacing:.12em;margin-bottom:8px">BATTLE PASS</div>
+        <div id="bp-progress" style="display:flex;gap:2px;justify-content:center;margin-bottom:8px"></div>
+        <div id="bp-info" style="font-family:var(--fd);font-size:12px;color:var(--mut)"></div>
+        <div id="bp-daily" style="font-family:var(--fd);font-size:13px;color:var(--acc);margin-top:8px"></div>
+      </div>
+      <button class="btn" id="lb-close" style="margin-top:14px;width:100%;font-size:13px;padding:12px">CLOSE</button>
+    </div>
+  </div>
+
+  <!-- ══════ KO SHARE OVERLAY ══════ -->
+  <div id="share-screen" class="hidden" style="position:fixed;inset:0;display:none;align-items:center;justify-content:center;z-index:130;background:rgba(5,5,16,.92);backdrop-filter:blur(12px)">
+    <div class="glass" style="padding:28px 32px;max-width:420px;width:90%;text-align:center">
+      <div style="font-family:var(--fh);font-size:clamp(1.2rem,3vw,1.8rem);letter-spacing:.1em;color:var(--acc);margin-bottom:16px">📲 SHARE YOUR KO</div>
+      <canvas id="ko-clip-canvas" width="540" height="540" style="width:100%;max-width:360px;border-radius:12px;border:1px solid rgba(255,255,255,.08);margin-bottom:16px"></canvas>
+      <div id="share-info" style="font-family:var(--fd);font-size:13px;color:var(--mut);margin-bottom:16px"></div>
+      <div style="display:flex;gap:10px;justify-content:center">
+        <button class="btn btn-primary" id="share-tiktok" style="font-size:13px;padding:12px 28px">📱 SHARE TO TIKTOK</button>
+        <button class="btn" id="share-copy" style="font-size:13px;padding:12px 28px">📋 COPY LINK</button>
+      </div>
+      <button class="btn" id="share-close" style="margin-top:12px;width:100%;font-size:12px;padding:10px">CLOSE</button>
+    </div>
+  </div>
+
+  <!-- ══════ ARENA SELECT (in loadout) ══════ -->
+  <div id="arena-select-overlay" class="hidden" style="position:fixed;inset:0;display:none;align-items:center;justify-content:center;z-index:115;background:rgba(5,5,16,.88);backdrop-filter:blur(12px)">
+    <div class="glass" style="padding:28px 32px;max-width:500px;width:90%">
+      <div style="font-family:var(--fh);font-size:clamp(1.2rem,3vw,1.6rem);letter-spacing:.1em;color:var(--acc);text-align:center;margin-bottom:16px">🗺️ SELECT ARENA</div>
+      <div id="arena-cards" style="display:flex;flex-direction:column;gap:10px"></div>
+      <button class="btn" id="arena-close" style="margin-top:14px;width:100%;font-size:13px;padding:12px">DONE</button>
+    </div>
+  </div>
+
+  <script>window.CROC_SERVER = 'https://web-production-66a24.up.railway.app';</script>
+  <!-- Block ALL zoom: pinch, double-tap, Ctrl+scroll, Ctrl+/-/0, keyboard shortcuts -->
+  <script>
+  document.addEventListener('gesturestart', function(e){ e.preventDefault(); }, {passive:false});
+  document.addEventListener('gesturechange', function(e){ e.preventDefault(); }, {passive:false});
+  document.addEventListener('gestureend', function(e){ e.preventDefault(); }, {passive:false});
+  document.addEventListener('touchmove', function(e){ if(e.touches.length>1) e.preventDefault(); }, {passive:false});
+  // Block double-tap zoom on iOS
+  let lastTouchEnd=0;
+  document.addEventListener('touchend', function(e){
+    const now=Date.now();
+    if(now-lastTouchEnd<300){ e.preventDefault(); }
+    lastTouchEnd=now;
+  }, {passive:false});
+  // Block Ctrl+scroll wheel zoom (desktop browsers)
+  document.addEventListener('wheel', function(e){
+    if(e.ctrlKey || e.metaKey){ e.preventDefault(); }
+  }, {passive:false});
+  // Block Ctrl+Plus/Minus/Zero keyboard zoom (desktop browsers)
+  document.addEventListener('keydown', function(e){
+    if((e.ctrlKey || e.metaKey) && (e.key==='+' || e.key==='-' || e.key==='=' || e.key==='0' || e.key==='_')){
+      e.preventDefault();
+    }
+  }, {passive:false});
+  </script>
+  <!-- ══════ CONTROLS SETTINGS SCREEN ══════ -->
+  <div id="controls-screen" class="hidden" style="position:fixed;inset:0;z-index:200;display:flex;align-items:center;justify-content:center;background:rgba(6,6,14,.95);backdrop-filter:blur(8px);overflow-y:auto">
+    <div style="position:relative;max-width:700px;width:95%;padding:24px 20px;margin:20px auto">
+      <h2 style="text-align:center;font-family:var(--fh);font-size:1.6rem;color:#fbbf24;letter-spacing:.08em;margin-bottom:18px">🎮 CUSTOMIZE CONTROLS</h2>
+      <div id="binds-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:16px"></div>
+      <div style="display:flex;gap:12px;justify-content:center;margin-top:20px;flex-wrap:wrap">
+        <button class="btn" id="btn-reset-binds" style="background:rgba(239,68,68,.3);border:1px solid rgba(239,68,68,.5);padding:10px 20px;font-size:.85rem">RESET DEFAULTS</button>
+        <button class="btn btn-primary" id="btn-close-controls" style="padding:10px 24px;font-size:.9rem">DONE</button>
+      </div>
+    </div>
+  </div>
+  <!-- TikTok SDK shim — stub for iOS native build (TT.* calls become no-ops) -->
+  <script>
+    window.TT = {
+      init: ()=>{}, login: (cb)=>{ if(cb) cb(); }, setLoadingProgress: ()=>{},
+      addShortcut: ()=>{}, startEntranceMission: ()=>{}, isInTikTok: ()=>false,
+      shareGame: ()=>{}, reportScore: ()=>{}
+    };
+  </script>
+  <script src="multiplayer.js"></script>
+  <script src="game.js"></script>
+  <script>
+    // Hide PWA install button — not needed in native iOS app
+    const installBtn = document.getElementById('btn-install');
+    if(installBtn) installBtn.style.display = 'none';
+
+    // Capacitor iOS bootstrap — lock orientation, hide splash, set status bar
+    if(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()){
+      document.documentElement.classList.add('native-ios');
+      // Lock to landscape
+      try {
+        if(window.Capacitor.Plugins && window.Capacitor.Plugins.ScreenOrientation){
+          window.Capacitor.Plugins.ScreenOrientation.lock({ orientation: 'landscape' }).catch(()=>{});
+        }
+      } catch(e){}
+      // Hide splash after game ready
+      window.addEventListener('load', () => {
+        setTimeout(() => {
+          try {
+            if(window.Capacitor.Plugins && window.Capacitor.Plugins.SplashScreen){
+              window.Capacitor.Plugins.SplashScreen.hide().catch(()=>{});
+            }
+          } catch(e){}
+        }, 1500);
+      });
+      // Hide status bar for full-screen game feel
+      try {
+        if(window.Capacitor.Plugins && window.Capacitor.Plugins.StatusBar){
+          window.Capacitor.Plugins.StatusBar.hide().catch(()=>{});
+        }
+      } catch(e){}
+      // Native haptic feedback bridge
+      window.nativeHaptic = (style) => {
+        try {
+          if(window.Capacitor.Plugins && window.Capacitor.Plugins.Haptics){
+            const map = { light: 'LIGHT', medium: 'MEDIUM', heavy: 'HEAVY' };
+            window.Capacitor.Plugins.Haptics.impact({ style: map[style] || 'MEDIUM' }).catch(()=>{});
+          }
+        } catch(e){}
+      };
+    }
+  </script>
+</body>
+</html>
