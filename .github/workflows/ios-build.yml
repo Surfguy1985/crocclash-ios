@@ -85,6 +85,34 @@ jobs:
           print('Cleanup done')
           PY
 
+      - name: Cleanup old provisioning profiles for this bundle
+        env:
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
+        run: |
+          python3 - <<'PY'
+          import os, base64, time, requests
+          import jwt
+          key_b64 = os.environ['APP_STORE_CONNECT_PRIVATE_KEY']
+          key = base64.b64decode(key_b64).decode()
+          token = jwt.encode(
+              {'iss': os.environ['APP_STORE_CONNECT_ISSUER_ID'], 'iat': int(time.time()), 'exp': int(time.time())+1200, 'aud': 'appstoreconnect-v1'},
+              key, algorithm='ES256',
+              headers={'kid': os.environ['APP_STORE_CONNECT_KEY_ID'], 'typ':'JWT'},
+          )
+          h = {'Authorization': f'Bearer {token}'}
+          BUNDLE = 'com.brycebeck.crocclash'
+          r = requests.get('https://api.appstoreconnect.apple.com/v1/profiles?limit=200&fields[profiles]=name,profileType,profileState', headers=h)
+          profiles = r.json().get('data', [])
+          to_delete = [p for p in profiles if BUNDLE in p['attributes'].get('name','')]
+          print(f'Found {len(profiles)} total profiles, {len(to_delete)} match bundle {BUNDLE}')
+          for p in to_delete:
+              rd = requests.delete(f"https://api.appstoreconnect.apple.com/v1/profiles/{p['id']}", headers=h)
+              print(f"  Deleted {p['id']} ({p['attributes'].get('name')}): HTTP {rd.status_code}")
+          print('Profile cleanup done')
+          PY
+
       - name: Setup keychain
         run: |
           KEYCHAIN_NAME="build.keychain"
