@@ -55,13 +55,43 @@ workflows:
           agvtool new-version -all $NEW_BUILD_NUMBER
           agvtool new-marketing-version 1.0
 
+      - name: Diagnose ASC credentials
+        script: |
+          set +x
+          echo "=== Are env vars present? ==="
+          echo "ISSUER_ID set: $([ -n "$APP_STORE_CONNECT_ISSUER_ID" ] && echo YES || echo NO)"
+          echo "KEY_ID set:    $([ -n "$APP_STORE_CONNECT_KEY_IDENTIFIER" ] && echo YES || echo NO)"
+          echo "P8 KEY set:    $([ -n "$APP_STORE_CONNECT_PRIVATE_KEY" ] && echo YES || echo NO)"
+          echo ""
+          echo "=== ISSUER_ID first 8 chars: ${APP_STORE_CONNECT_ISSUER_ID:0:8}... ==="
+          echo "=== KEY_ID: $APP_STORE_CONNECT_KEY_IDENTIFIER ==="
+          echo ""
+          echo "=== P8 first line: ==="
+          echo "$APP_STORE_CONNECT_PRIVATE_KEY" | head -1
+          echo "=== P8 last line: ==="
+          echo "$APP_STORE_CONNECT_PRIVATE_KEY" | tail -1
+          echo "=== P8 line count: ==="
+          echo "$APP_STORE_CONNECT_PRIVATE_KEY" | wc -l
+          echo ""
+          echo "=== Test JWT auth directly with the API ==="
+          # Write key to disk
+          mkdir -p ~/.appstoreconnect/private_keys
+          echo "$APP_STORE_CONNECT_PRIVATE_KEY" > ~/.appstoreconnect/private_keys/AuthKey_${APP_STORE_CONNECT_KEY_IDENTIFIER}.p8
+          chmod 600 ~/.appstoreconnect/private_keys/AuthKey_${APP_STORE_CONNECT_KEY_IDENTIFIER}.p8
+          # Test by listing apps via the CLI directly
+          echo "=== Listing apps from ASC (proves auth works) ==="
+          app-store-connect apps list --json 2>&1 | head -40 || true
+          echo "=== Listing existing profiles ==="
+          app-store-connect list-profiles --type IOS_APP_STORE 2>&1 | head -40 || true
+
       - name: Set up code signing (automatic via Codemagic)
         script: |
           keychain initialize
           app-store-connect fetch-signing-files \
             "$BUNDLE_ID" \
             --type IOS_APP_STORE \
-            --create
+            --create \
+            --verbose
           keychain add-certificates
           xcode-project use-profiles
 
