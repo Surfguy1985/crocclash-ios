@@ -1861,7 +1861,7 @@ function updateAllProjectiles(dt){
     else if(p.type==='boomerang'){ hw=60; hh=55; }
     else { hw=65; hh=70; } // pillow (normal)
 
-    if(p.alive && target.alive && !target.launched &&
+    if(p.alive && target.alive && !target.launched && !(target.iFrameT > 0) &&
        Math.abs(p.x - (target.x+target.w/2)) < hw &&
        Math.abs(p.y - (target.y+target.h/2)) < hh){
       p.alive = false;
@@ -2196,12 +2196,29 @@ function updateLaunched(c, dt){
   if(Math.random()<dt*8) feathers(c.x+c.w/2, c.y+c.h/2, 1, '#fff');
   c.x = clamp(c.x, 10, AW-c.w-10);
 
+  // SAFETY: if a croc has been in launched state too long without landing
+  // (e.g. clamped against a wall mid-air, KO video freeze, NaN physics),
+  // force-land them so they can resume control. This prevents permanently stuck launched state.
+  if(c.launchTimer > 4.0 && !c.launchIsKO){
+    c.launched = false;
+    c.launchRot = 0;
+    c.y = FLOOR_Y - c.h;
+    c.grounded = true;
+    c.vx = 0; c.vy = 0;
+    c.stunned = false; c.stunT = 0;
+    if(window.bootLog) window.bootLog('forced-launch-recover-name=' + (c.name||'?') + '-x=' + Math.round(c.x));
+    return;
+  }
+
   if(c.y+c.h >= FLOOR_Y && c.launchVy > 0){
     c.y = FLOOR_Y-c.h;
     c.launched = false;
     c.launchRot = 0;
     c.grounded = true;
     c.vy = 0; c.vx = 0;
+    // Post-launch invincibility: 1.2s where you can't be re-launched or hit
+    // (prevents AI from chain-launching the player on recovery)
+    c.iFrameT = 1.2;
     addTrauma(0.5);
     sfxLand();
     shockwave(c.x+c.w/2, FLOOR_Y, 'rgba(255,150,0,.5)');
@@ -3185,7 +3202,7 @@ function mkCroc(x,face,name,charKey){
     tornadoAct:false,tornadoT:0,tornadoCD:0,
     tailAct:false,tailT:0,tailCD:0,
     parrying:false,parryT:0,parryCD:0,parryOK:false,
-    launched:false,launchVy:0,launchVx:0,launchSpin:0,launchRot:0,launchTimer:0,launchIsKO:false,
+    launched:false,launchVy:0,launchVx:0,launchSpin:0,launchRot:0,launchTimer:0,launchIsKO:false,iFrameT:0,
     launchCD:0,
     stunned:false,stunT:0,
     frozen:false,frozenT:0,frozenCracks:0,
@@ -3260,6 +3277,7 @@ function resetC(c,x){
 // ─── MELEE DAMAGE ───
 function dealMeleeDmg(atk,vic,dir,heavy,isTail){
   if(vic.launched) return;
+  if(vic.iFrameT > 0) return; // post-recovery invincibility window
   if(vic.frozen) return; // can't be hit while frozen (handled by freeze expiry)
   if(vic.shieldActive&&heavy){ vic.shieldActive=false; sfxParry(); fText(vic.x+vic.w/2,vic.y-60,'BLOCKED!','#60a5fa',30,1.2); return; }
   if(vic.parrying&&vic.parryT>0){
@@ -3597,6 +3615,7 @@ function updateCroc(c,inp,o,dt){
   if(c.launched){updateLaunched(c,dt);return}
 
   c.atkCD=Math.max(0,c.atkCD-dt);
+  c.iFrameT = Math.max(0, (c.iFrameT||0) - dt);
   c.dashCD=Math.max(0,c.dashCD-dt);
   c.tornadoCD=Math.max(0,c.tornadoCD-dt);
   c.tailCD=Math.max(0,c.tailCD-dt);
@@ -3976,6 +3995,8 @@ function updateCroc(c,inp,o,dt){
 // ─── AI ───
 function getAI(ai,tgt){
   const inp={left:0,right:0,up:0,attack:0,dash:0,parry:0,tailwhip:0,launch:0,power1:0,power2:0,rage:0};
+  // Back off while target is launched or in post-recovery i-frames — prevents chain-launch grief
+  if(tgt.launched || tgt.iFrameT > 0 || tgt.frozen || tgt.dead) return inp;
   const dx=tgt.x-ai.x,adx=Math.abs(dx);
   const hpRatio = ai.hp / MAX_HP; // 0-1, lower = more desperate
   const losing = ai.hp < tgt.hp;
@@ -5799,7 +5820,7 @@ function drawTelemetry(){
       'ts L=' + ts.left + ' R=' + ts.right + ' U=' + ts.up + ' A=' + ts.attack + ' D=' + ts.dash,
       'ts P=' + ts.parry + ' Lch=' + ts.launch + ' R=' + ts.rage,
       'reg=' + __touchRegistry.size + ' jp.KeyS=' + (jp.KeyS?1:0) + ' jp.KeyR=' + (jp.KeyR?1:0),
-      'p1: ' + (p1 ? ('alive='+p1.alive+' dead='+p1.dead+' frz='+(p1.frozen?1:0)+' lch='+(p1.launched?1:0)+' stn='+(p1.stunned?1:0)) : 'null'),
+      'p1: ' + (p1 ? ('alive='+p1.alive+' dead='+p1.dead+' frz='+(p1.frozen?1:0)+' lch='+(p1.launched?1:0)+' stn='+(p1.stunned?1:0)+' iF='+(p1.iFrameT||0).toFixed(2)+' lt='+(p1.launchTimer||0).toFixed(1)) : 'null'),
       'p1: ' + (p1 ? ('atkCD='+p1.atkCD.toFixed(2)+' atk='+(p1.atk?1:0)+' x='+Math.round(p1.x)+' vx='+Math.round(p1.vx)) : 'null'),
       'timers: dt='+(tel.rawDt||0).toFixed(3)+' rT='+(tel.roundTimer||0).toFixed(1)+' cdT='+(tel.cdTimer||0).toFixed(1)+' hs='+(tel.hsTimer||0).toFixed(2)+' sm='+(tel.smTimer||0).toFixed(2),
       'press#'+(tel.pressCount||0)+': '+(tel.lastPress||'(none)'),
