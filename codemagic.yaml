@@ -75,12 +75,14 @@ workflows:
       - name: Install CocoaPods dependencies
         script: |
           cd ios/App
-          pod install
+          pod repo update
+          pod install --repo-update
+          echo "=== Pods signing settings ==="
+          grep -E 'CODE_SIGN|DEVELOPMENT_TEAM' Pods/Pods.xcodeproj/project.pbxproj | head -20 || true
 
-      - name: Build .ipa with manual signing
+      - name: Archive with manual signing
         script: |
-          set -x
-          # Use plain xcodebuild instead of Codemagic's wrapper for more direct control
+          set -ex
           mkdir -p build/ios
           xcodebuild \
             -workspace "$XCODE_WORKSPACE" \
@@ -88,16 +90,24 @@ workflows:
             -configuration Release \
             -destination 'generic/platform=iOS' \
             -archivePath build/ios/App.xcarchive \
-            archive \
+            -allowProvisioningUpdates \
+            clean archive \
             CODE_SIGN_STYLE=Manual \
             DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
             PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME" \
             CODE_SIGN_IDENTITY="iPhone Distribution" \
-            COMPILER_INDEX_STORE_ENABLE=NO
+            COMPILER_INDEX_STORE_ENABLE=NO \
+            COPY_PHASE_STRIP=NO \
+            ONLY_ACTIVE_ARCH=NO
+
+      - name: Export IPA
+        script: |
+          set -ex
           xcodebuild -exportArchive \
             -archivePath build/ios/App.xcarchive \
             -exportOptionsPlist ios/ExportOptions.plist \
-            -exportPath build/ios/ipa
+            -exportPath build/ios/ipa \
+            -allowProvisioningUpdates
           ls -la build/ios/ipa/
 
     artifacts:
