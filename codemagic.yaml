@@ -5,19 +5,19 @@ workflows:
     instance_type: mac_mini_m2
     environment:
       groups:
-        # MUST be created in Codemagic UI: Team -> Environment variables -> Create group "appstore_credentials"
-        # with three SECRET vars:
-        #   APP_STORE_CONNECT_ISSUER_ID = 67eaac88-1eb7-4b0c-8be2-5297ccb1df76
-        #   APP_STORE_CONNECT_KEY_IDENTIFIER = 6F338ZZCFH
-        #   APP_STORE_CONNECT_PRIVATE_KEY = (full .p8 contents incl BEGIN/END lines)
+        # Codemagic UI: Team -> Environment variables -> "appstore_credentials" group with:
+        #   APP_STORE_CONNECT_ISSUER_ID
+        #   APP_STORE_CONNECT_KEY_IDENTIFIER
+        #   APP_STORE_CONNECT_PRIVATE_KEY
         - appstore_credentials
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.brycebeck.crocclash
       vars:
         APP_STORE_APPLE_ID: 6767337661
         BUNDLE_ID: "com.brycebeck.crocclash"
         XCODE_WORKSPACE: "ios/App/App.xcworkspace"
         XCODE_SCHEME: "App"
-        APPLE_TEAM_ID: "USZ4L8LG24"
-        PROFILE_NAME: "Croc Clash App Store Distribution"
       node: 20.11.1
       xcode: latest
       cocoapods: default
@@ -55,60 +55,27 @@ workflows:
           agvtool new-version -all $NEW_BUILD_NUMBER
           agvtool new-marketing-version 1.0
 
-      - name: Set up code signing using env vars
+      - name: Set up code signing (automatic via Codemagic)
         script: |
           keychain initialize
-          # Fetch & install our exact distribution profile + cert
           app-store-connect fetch-signing-files \
             "$BUNDLE_ID" \
             --type IOS_APP_STORE \
             --create
           keychain add-certificates
-          # NOTE: do NOT run `xcode-project use-profiles` — it overwrites our
-          # manual-signing settings in the pbxproj. Our project.pbxproj already
-          # has DEVELOPMENT_TEAM + PROVISIONING_PROFILE_SPECIFIER baked in.
-          echo "=== Installed profiles ==="
-          ls -la ~/Library/MobileDevice/Provisioning\ Profiles/ || true
-          echo "=== Installed identities ==="
-          security find-identity -v -p codesigning
+          xcode-project use-profiles
 
       - name: Install CocoaPods dependencies
         script: |
           cd ios/App
-          pod repo update
-          pod install --repo-update
-          echo "=== Pods signing settings ==="
-          grep -E 'CODE_SIGN|DEVELOPMENT_TEAM' Pods/Pods.xcodeproj/project.pbxproj | head -20 || true
+          pod install
 
-      - name: Archive with manual signing
+      - name: Build .ipa with Codemagic CLI
         script: |
-          set -ex
-          mkdir -p build/ios
-          xcodebuild \
-            -workspace "$XCODE_WORKSPACE" \
-            -scheme "$XCODE_SCHEME" \
-            -configuration Release \
-            -destination 'generic/platform=iOS' \
-            -archivePath build/ios/App.xcarchive \
-            -allowProvisioningUpdates \
-            clean archive \
-            CODE_SIGN_STYLE=Manual \
-            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
-            PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME" \
-            CODE_SIGN_IDENTITY="iPhone Distribution" \
-            COMPILER_INDEX_STORE_ENABLE=NO \
-            COPY_PHASE_STRIP=NO \
-            ONLY_ACTIVE_ARCH=NO
-
-      - name: Export IPA
-        script: |
-          set -ex
-          xcodebuild -exportArchive \
-            -archivePath build/ios/App.xcarchive \
-            -exportOptionsPlist ios/ExportOptions.plist \
-            -exportPath build/ios/ipa \
-            -allowProvisioningUpdates
-          ls -la build/ios/ipa/
+          xcode-project build-ipa \
+            --workspace "$XCODE_WORKSPACE" \
+            --scheme "$XCODE_SCHEME" \
+            --config Release
 
     artifacts:
       - build/ios/ipa/*.ipa
