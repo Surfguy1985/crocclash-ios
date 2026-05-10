@@ -1260,43 +1260,79 @@ const ts = {up:0,down:0,left:0,right:0,attack:0,dash:0,parry:0,launch:0,power1:0
 // Touch state — P2 (2P P2 half)
 const ts2 = {up:0,down:0,left:0,right:0,attack:0,dash:0,parry:0,launch:0,power1:0,power2:0,power3:0,power4:0,rage:0};
 
+// Robust touch binding for iOS WKWebView (Capacitor):
+//   - Listen on touchstart + touchend + touchcancel (iOS fires cancel when finger drags off / system gesture / multi-touch)
+//   - Also listen on pointerdown + pointerup + pointercancel + pointerleave (modern reliable path)
+//   - Stop propagation so global handlers can't eat the event
+//   - On press: set state to 1 AND mark guestInputBuf for online play
+//   - Always force-release on the same button when the finger lifts ANYWHERE — track per-button activeTouch ids
+function bindTouchBtn(el, stateObj, key, isAction){
+  if(!el) return;
+  let active = false;
+  const press = (e) => {
+    if(e && e.preventDefault) e.preventDefault();
+    if(e && e.stopPropagation) e.stopPropagation();
+    active = true;
+    stateObj[key] = 1;
+    if(isAction && typeof guestInputBuf !== 'undefined' && guestInputBuf && (key in guestInputBuf)){
+      guestInputBuf[key] = true;
+    }
+    if(!isAction && key === 'up' && typeof guestInputBuf !== 'undefined' && guestInputBuf){
+      guestInputBuf.up = true;
+    }
+  };
+  const release = (e) => {
+    if(e && e.preventDefault) e.preventDefault();
+    if(e && e.stopPropagation) e.stopPropagation();
+    active = false;
+    stateObj[key] = 0;
+  };
+  // Touch events (most reliable on iOS WKWebView)
+  el.addEventListener('touchstart', press, {passive:false});
+  el.addEventListener('touchend', release, {passive:false});
+  el.addEventListener('touchcancel', release, {passive:false});
+  // Pointer events (modern fallback — fires on both mouse and touch)
+  el.addEventListener('pointerdown', (e) => {
+    try { el.setPointerCapture && el.setPointerCapture(e.pointerId); } catch(_){}
+    press(e);
+  }, {passive:false});
+  el.addEventListener('pointerup', release, {passive:false});
+  el.addEventListener('pointercancel', release, {passive:false});
+  el.addEventListener('pointerleave', (e) => { if(active) release(e); }, {passive:false});
+  // Mouse fallback for desktop testing
+  el.addEventListener('mousedown', press);
+  el.addEventListener('mouseup', release);
+  el.addEventListener('mouseleave', (e) => { if(active) release(e); });
+}
+
 // Single-player touch controls (no data-p attribute)
 document.querySelectorAll('#touch-controls .dpad-btn').forEach(b => {
-  const d = b.dataset.dir;
-  b.addEventListener('touchstart', e => { e.preventDefault(); ts[d]=1;
-    if(typeof guestInputBuf!=='undefined' && (d==='up')) guestInputBuf.up=true;
-  }, {passive:false});
-  b.addEventListener('touchend',   e => { e.preventDefault(); ts[d]=0; }, {passive:false});
+  bindTouchBtn(b, ts, b.dataset.dir, false);
 });
 document.querySelectorAll('#touch-controls .abtn').forEach(b => {
-  const a = b.dataset.action;
-  b.addEventListener('touchstart', e => { e.preventDefault(); ts[a]=1;
-    if(typeof guestInputBuf!=='undefined') guestInputBuf[a]=true;
-  }, {passive:false});
-  b.addEventListener('touchend',   e => { e.preventDefault(); ts[a]=0; }, {passive:false});
+  bindTouchBtn(b, ts, b.dataset.action, true);
 });
-
 // 2-Player touch controls (data-p="1" or data-p="2")
 document.querySelectorAll('#touch-2p [data-p="1"].dpad-btn').forEach(b => {
-  const d = b.dataset.dir;
-  b.addEventListener('touchstart', e => { e.preventDefault(); ts[d]=1; }, {passive:false});
-  b.addEventListener('touchend',   e => { e.preventDefault(); ts[d]=0; }, {passive:false});
+  bindTouchBtn(b, ts, b.dataset.dir, false);
 });
 document.querySelectorAll('#touch-2p [data-p="1"].abtn').forEach(b => {
-  const a = b.dataset.action;
-  b.addEventListener('touchstart', e => { e.preventDefault(); ts[a]=1; }, {passive:false});
-  b.addEventListener('touchend',   e => { e.preventDefault(); ts[a]=0; }, {passive:false});
+  bindTouchBtn(b, ts, b.dataset.action, true);
 });
 document.querySelectorAll('#touch-2p [data-p="2"].dpad-btn').forEach(b => {
-  const d = b.dataset.dir;
-  b.addEventListener('touchstart', e => { e.preventDefault(); ts2[d]=1; }, {passive:false});
-  b.addEventListener('touchend',   e => { e.preventDefault(); ts2[d]=0; }, {passive:false});
+  bindTouchBtn(b, ts2, b.dataset.dir, false);
 });
 document.querySelectorAll('#touch-2p [data-p="2"].abtn').forEach(b => {
-  const a = b.dataset.action;
-  b.addEventListener('touchstart', e => { e.preventDefault(); ts2[a]=1; }, {passive:false});
-  b.addEventListener('touchend',   e => { e.preventDefault(); ts2[a]=0; }, {passive:false});
+  bindTouchBtn(b, ts2, b.dataset.action, true);
 });
+// Visibility/blur safety: clear ALL touch state when the window/tab is backgrounded.
+// Otherwise iOS leaves a button stuck pressed when the user backgrounds the app mid-touch.
+function __clearAllTouchState(){
+  for(const k in ts) ts[k] = 0;
+  for(const k in ts2) ts2[k] = 0;
+}
+window.addEventListener('blur', __clearAllTouchState);
+document.addEventListener('visibilitychange', () => { if(document.hidden) __clearAllTouchState(); });
 
 // Show/hide correct touch controls based on mode
 function showTouchControls(is2P){

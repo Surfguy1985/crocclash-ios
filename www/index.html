@@ -84,32 +84,17 @@
     window.addEventListener('unhandledrejection', function(e){
       showErr('[PROMISE] ' + (e.reason && (e.reason.message||e.reason) || '?'));
     });
-    // Build the badge ASAP so the user can read where execution stopped
-    if(document.readyState !== 'loading'){
-      makeBootBadge();
-    } else {
-      document.addEventListener('DOMContentLoaded', makeBootBadge);
-    }
+    // Boot badge is only shown if game.js fails or stalls — see window load handler below.
     window.addEventListener('load', function(){
       bootLog('window-load');
-      makeBootBadge();
+      // Only build the boot badge if game hasn't booted by 1.5s — otherwise it's just visual noise blocking taps near the top.
       setTimeout(function(){
-        // Surface critical state info to badge
-        try {
-          var titleEl = document.getElementById('title-screen');
-          var nameEl = document.getElementById('name-entry');
-          var info = '\n[STATE]'
-            + ' booted=' + !!window.__gameBooted
-            + ' titleHidden=' + (titleEl ? titleEl.classList.contains('hidden') : '?')
-            + ' nameHidden=' + (nameEl ? nameEl.classList.contains('hidden') : '?')
-            + ' wxh=' + window.innerWidth + 'x' + window.innerHeight;
-          if(window.__bootBadge) window.__bootBadge.textContent += info;
-        } catch(e){}
         if(!window.__gameBooted){
+          makeBootBadge();
           showErr('[BOOT] game.js never finished.\nBoot log: ' + (window.__bootLog||[]).join(' → '));
           makeRecoverBtn();
         } else {
-          // Game booted but maybe nothing visible? Show recover button only if BOTH title and name-entry are hidden after another 3s.
+          // Game booted — only show recover button if BOTH title and name-entry are hidden after another 3s (truly stuck).
           setTimeout(function(){
             try {
               var t = document.getElementById('title-screen');
@@ -118,6 +103,7 @@
               var nHidden = !n || n.classList.contains('hidden');
               if(tHidden && nHidden){
                 if(window.bootLog) window.bootLog('overlay-recover-btn-shown');
+                makeBootBadge();
                 makeRecoverBtn();
               }
             } catch(_){}
@@ -432,7 +418,9 @@
     .tdpad{position:relative;width:120px;height:120px;flex-shrink:0}
     .dpad-ring{position:absolute;inset:0;border-radius:50%;background:rgba(255,255,255,.03);border:1.5px solid rgba(255,255,255,.08)}
     @media (pointer:fine){.dpad-ring{box-shadow:0 0 20px rgba(0,0,0,.4) inset}}
-    .dpad-btn{position:absolute;width:42px;height:42px;border-radius:12px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);color:rgba(255,255,255,.7);font-size:16px;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;user-select:none;touch-action:manipulation;will-change:opacity}
+    .dpad-btn{position:absolute;width:42px;height:42px;border-radius:12px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);color:rgba(255,255,255,.7);font-size:16px;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none;touch-action:none;-ms-touch-action:none;will-change:opacity;cursor:pointer}
+    /* Children of touch buttons must not capture pointer events — always bubble to the button */
+    .dpad-btn *,.abtn *{pointer-events:none}
     .dpad-btn:active{background:rgba(255,255,255,.22);opacity:.85}
     .dpad-btn.up{top:0;left:50%;transform:translateX(-50%)}
     .dpad-btn.down{bottom:0;left:50%;transform:translateX(-50%)}
@@ -444,7 +432,7 @@
       width:52px;height:48px;border-radius:14px;
       font-family:var(--fh);font-size:9px;letter-spacing:.04em;
       display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;
-      -webkit-tap-highlight-color:transparent;user-select:none;touch-action:manipulation;
+      -webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none;touch-action:none;-ms-touch-action:none;cursor:pointer;
       border:none;color:#fff;position:relative;overflow:hidden;
       will-change:opacity;
     }
