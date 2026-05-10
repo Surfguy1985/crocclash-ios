@@ -56,6 +56,35 @@ jobs:
         run: |
           pod install --repo-update
 
+      - name: Cleanup old Distribution certs to avoid Apple's 3-cert limit
+        env:
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
+        run: |
+          pip3 install pyjwt cryptography requests --break-system-packages 2>/dev/null || pip3 install pyjwt cryptography requests
+          python3 - <<'PY'
+          import os, base64, time, requests
+          import jwt
+          key_b64 = os.environ['APP_STORE_CONNECT_PRIVATE_KEY']
+          key = base64.b64decode(key_b64).decode()
+          token = jwt.encode(
+              {'iss': os.environ['APP_STORE_CONNECT_ISSUER_ID'], 'iat': int(time.time()), 'exp': int(time.time())+1200, 'aud': 'appstoreconnect-v1'},
+              key, algorithm='ES256',
+              headers={'kid': os.environ['APP_STORE_CONNECT_KEY_ID'], 'typ':'JWT'},
+          )
+          h = {'Authorization': f'Bearer {token}'}
+          r = requests.get('https://api.appstoreconnect.apple.com/v1/certificates?filter[certificateType]=DISTRIBUTION,IOS_DISTRIBUTION&limit=20', headers=h)
+          certs = r.json().get('data', [])
+          print(f'Found {len(certs)} distribution certs')
+          # Delete ALL distribution certs so fastlane can always create fresh
+          # (we don't have the private key for any existing cert on the runner)
+          for c in certs:
+              rd = requests.delete(f"https://api.appstoreconnect.apple.com/v1/certificates/{c['id']}", headers=h)
+              print(f"  Deleted {c['id']}: HTTP {rd.status_code}")
+          print('Cleanup done')
+          PY
+
       - name: Setup keychain
         run: |
           KEYCHAIN_NAME="build.keychain"
