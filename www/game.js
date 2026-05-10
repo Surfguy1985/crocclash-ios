@@ -4043,6 +4043,25 @@ function playMatchIntro(onDone){
   // Prepare the game canvas behind the video (draw arena first frame)
   resetRound(); state = 'intro';
   $('hud').classList.remove('hidden');
+  // HARD SAFETY: if the video pipeline gets stuck (iOS WKWebView sometimes returns Infinity duration
+  // and never fires 'ended'), force-start gameplay after 14 seconds no matter what.
+  // This guarantees the croc never stays frozen waiting for a stalled video.
+  if(window.__introHardTimeout) clearTimeout(window.__introHardTimeout);
+  window.__introHardTimeout = setTimeout(() => {
+    if(state === 'intro' && matchIntroPlaying){
+      if(window.bootLog) window.bootLog('intro-hard-timeout-firing');
+      try {
+        const v1 = videoEl, v2 = videoElB;
+        v1.pause(); v1.style.display = 'none'; v1.style.opacity = '0'; v1.removeAttribute('src'); v1.load();
+        v2.pause(); v2.style.display = 'none'; v2.style.opacity = '0'; v2.removeAttribute('src'); v2.load();
+      } catch(_){}
+      videoPlaying = false; videoLocked = false; matchIntroPlaying = false;
+      if(matchIntroTimer){ clearTimeout(matchIntroTimer); matchIntroTimer = null; }
+      if(matchIntroCleanup){ clearTimeout(matchIntroCleanup); matchIntroCleanup = null; }
+      try { unmuteCrowd(); } catch(_){}
+      try { onDone(); } catch(_){}
+    }
+  }, 14000);
   // Use the incoming video slot for the intro
   const incoming = (activeVidSlot === 'A') ? videoElB : videoEl;
   const outgoing = (activeVidSlot === 'A') ? videoEl : videoElB;
@@ -4074,6 +4093,8 @@ function playMatchIntro(onDone){
   // Let the intro play ALL the way through — crossfade after natural end
   function introCleanup(){
     if(!matchIntroPlaying) return; // already cleaned up
+    // Clear hard safety timeout — we're cleaning up normally
+    if(window.__introHardTimeout){ clearTimeout(window.__introHardTimeout); window.__introHardTimeout = null; }
     incoming.classList.add('intro-fade'); // switch to slow 1.5s dissolve
     void incoming.offsetWidth;
     incoming.style.opacity = '0';
