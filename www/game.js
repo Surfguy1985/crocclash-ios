@@ -508,18 +508,25 @@ const DEFERRED_IMAGES = [
 function loadImages(cb) {
   let total = IMAGE_LIST.length;
   if(total === 0){ cb(); return; }
+  // Failsafe: if images stall (capacitor:// can be slow on first launch), boot anyway after 6s
+  let cbFired = false;
+  const fire = () => { if(!cbFired){ cbFired = true; cb(); } };
+  setTimeout(() => {
+    if(!cbFired && window.bootLog) window.bootLog('loadImages-timeout-' + imagesLoaded + '/' + total);
+    fire();
+  }, 6000);
   IMAGE_LIST.forEach(([key, src]) => {
     const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => { images[key] = img; imagesLoaded++; if(imagesLoaded >= total) cb(); };
-    img.onerror = () => { imagesLoaded++; if(imagesLoaded >= total) cb(); };
+    // NO crossOrigin on local assets — capacitor:// scheme + crossOrigin=anonymous causes opaque tainted canvas
+    // and on some iOS 26 WKWebView builds rejects the request entirely.
+    img.onload = () => { images[key] = img; imagesLoaded++; if(imagesLoaded >= total) fire(); };
+    img.onerror = () => { imagesLoaded++; if(imagesLoaded >= total) fire(); };
     img.src = src;
   });
 }
 function loadDeferredImages(){
   DEFERRED_IMAGES.forEach(([key, src]) => {
     const img = new Image();
-    img.crossOrigin = 'anonymous';
     img.onload = () => { images[key] = img; };
     img.src = src;
   });
@@ -5669,11 +5676,13 @@ function gameLoop(now){
 }
 
 // ─── BOOT ───
+if(window.bootLog) window.bootLog('boot-loadImages-call');
 loadImages(()=>{
-  initVideoOverlay();
-  loadNarration();
-  updateTitleStreak();
-  initViralSystems();
+  if(window.bootLog) window.bootLog('boot-loadImages-cb');
+  try { initVideoOverlay(); } catch(e){ if(window.bootLog) window.bootLog('initVideoOverlay-err:'+(e.message||e)); }
+  try { loadNarration(); } catch(e){ if(window.bootLog) window.bootLog('loadNarration-err:'+(e.message||e)); }
+  try { updateTitleStreak(); } catch(e){ if(window.bootLog) window.bootLog('updateTitleStreak-err:'+(e.message||e)); }
+  try { initViralSystems(); } catch(e){ if(window.bootLog) window.bootLog('initViralSystems-err:'+(e.message||e)); }
 
   // TikTok Mini Games SDK init
   if(typeof TT !== 'undefined'){
@@ -5957,13 +5966,34 @@ $('btn-changename').addEventListener('click', ()=>{
 
 // On boot: if no name saved, show name entry instead of title
 (function checkNameOnBoot(){
-  if(!playerName){
-    $('title-screen').classList.add('hidden');
-    showNameEntry(false);
-  } else {
-    updateTitlePlayerName();
+  try {
+    if(!playerName){
+      $('title-screen').classList.add('hidden');
+      showNameEntry(false);
+    } else {
+      updateTitlePlayerName();
+    }
+  } catch(e){
+    if(window.bootLog) window.bootLog('checkNameOnBoot-err:' + (e.message||e));
+    // Fallback: force title screen visible so user sees SOMETHING
+    try { $('title-screen').classList.remove('hidden'); } catch(_){}
   }
 })();
+
+// Final safety net: 1.5 seconds after boot, if neither title nor name-entry is visible, force one of them.
+// This guarantees the user always has SOMETHING tappable on screen, never just a black void.
+setTimeout(function(){
+  try {
+    var t = document.getElementById('title-screen');
+    var n = document.getElementById('name-entry');
+    var tHidden = !t || t.classList.contains('hidden');
+    var nHidden = !n || n.classList.contains('hidden');
+    if(tHidden && nHidden){
+      if(window.bootLog) window.bootLog('safety-net-forcing-title');
+      if(t){ t.classList.remove('hidden'); t.style.display = 'flex'; }
+    }
+  } catch(e){}
+}, 1500);
 
 if(window.bootLog) window.bootLog('game.js-end');
 window.__gameBooted = true;
