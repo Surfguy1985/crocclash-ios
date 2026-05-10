@@ -1,4 +1,5 @@
 // multiplayer.js — Online Multiplayer Client for Croc Clash (v2.0)
+if(window.bootLog) window.bootLog('multiplayer.js-start');
 const MP = (() => {
   let ws = null;
   let roomCode = null;

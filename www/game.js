@@ -5,6 +5,7 @@
 // ============================================================
 (() => {
 'use strict';
+if(window.bootLog) window.bootLog('game.js-start');
 
 // ─── PERFORMANCE ───
 const IS_MOBILE = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) || window.matchMedia('(pointer:coarse)').matches;
@@ -5964,5 +5965,7 @@ $('btn-changename').addEventListener('click', ()=>{
   }
 })();
 
+if(window.bootLog) window.bootLog('game.js-end');
+window.__gameBooted = true;
 
 })();

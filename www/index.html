@@ -2,8 +2,45 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1,minimum-scale=1,maximum-scale=1,user-scalable=no"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1,minimum-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"/>
   <title>CROC CLASH — Branson Pillow Brawl</title>
+  <!-- ═══ EARLY ERROR OVERLAY (so TestFlight bugs are visible) ═══ -->
+  <script>
+  (function(){
+    var bx;
+    function showErr(msg){
+      try {
+        if(!bx){
+          bx = document.createElement('div');
+          bx.id = '__err__';
+          bx.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:#7f1d1d;color:#fff;font:12px/1.4 monospace;padding:10px;max-height:60vh;overflow:auto;white-space:pre-wrap;word-break:break-all;border-bottom:2px solid #fca5a5';
+          if(document.body) document.body.appendChild(bx);
+          else document.addEventListener('DOMContentLoaded', function(){ document.body.appendChild(bx); });
+        }
+        bx.textContent += msg + '\n\n';
+      } catch(e){}
+    }
+    window.addEventListener('error', function(e){
+      showErr('[ERROR] ' + (e.message||'?') + '\n@ ' + (e.filename||'?') + ':' + (e.lineno||'?') + ':' + (e.colno||'?') + (e.error && e.error.stack ? '\n' + e.error.stack : ''));
+    });
+    window.addEventListener('unhandledrejection', function(e){
+      showErr('[PROMISE] ' + (e.reason && (e.reason.message||e.reason) || '?'));
+    });
+    // Also surface a heartbeat so we can see if scripts ever loaded
+    window.__bootLog = [];
+    window.bootLog = function(s){ window.__bootLog.push(s); };
+    bootLog('html-parse');
+    window.addEventListener('load', function(){
+      bootLog('window-load');
+      // Show a small badge with boot status so we can see if game.js ran
+      setTimeout(function(){
+        if(!window.__gameBooted){
+          showErr('[BOOT] game.js never set __gameBooted=true.\nBoot log: ' + (window.__bootLog||[]).join(' → '));
+        }
+      }, 3000);
+    });
+  })();
+  </script>
   <!-- iOS / Capacitor -->
   <meta name="theme-color" content="#0a0a14"/>
   <meta name="apple-mobile-web-app-capable" content="yes"/>
