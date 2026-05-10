@@ -34,6 +34,20 @@ platform :ios do
       app_identifier: "com.brycebeck.crocclash",
     )
 
+    profile_name = lane_context[SharedValues::SIGH_NAME]
+    UI.message("Using provisioning profile: #{profile_name}")
+
+    # Pin manual code signing into the Xcode project
+    update_code_signing_settings(
+      use_automatic_signing: false,
+      path: "App.xcodeproj",
+      bundle_identifier: "com.brycebeck.crocclash",
+      code_sign_identity: "Apple Distribution",
+      profile_name: profile_name,
+      team_id: "USZ4L8LG24",
+      build_configurations: ["Release"],
+    )
+
     # Build the .ipa
     build_app(
       workspace: "App.xcworkspace",
@@ -42,9 +56,13 @@ platform :ios do
       export_method: "app-store",
       export_options: {
         provisioningProfiles: {
-          "com.brycebeck.crocclash" => ENV["sigh_com.brycebeck.crocclash_appstore_profile-name"] || ENV["SIGH_PROFILE_NAME"]
-        }
+          "com.brycebeck.crocclash" => profile_name
+        },
+        signingStyle: "manual",
+        signingCertificate: "Apple Distribution",
+        teamID: "USZ4L8LG24",
       },
+      xcargs: "-allowProvisioningUpdates",
       clean: true,
     )
 
