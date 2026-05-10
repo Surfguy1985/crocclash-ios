@@ -93,22 +93,11 @@
           makeBootBadge();
           showErr('[BOOT] game.js never finished.\nBoot log: ' + (window.__bootLog||[]).join(' → '));
           makeRecoverBtn();
-        } else {
-          // Game booted — only show recover button if BOTH title and name-entry are hidden after another 3s (truly stuck).
-          setTimeout(function(){
-            try {
-              var t = document.getElementById('title-screen');
-              var n = document.getElementById('name-entry');
-              var tHidden = !t || t.classList.contains('hidden');
-              var nHidden = !n || n.classList.contains('hidden');
-              if(tHidden && nHidden){
-                if(window.bootLog) window.bootLog('overlay-recover-btn-shown');
-                makeBootBadge();
-                makeRecoverBtn();
-              }
-            } catch(_){}
-          }, 3000);
         }
+        // Note: don't auto-show the recover button after game boots. The user can be in a match,
+        // loadout screen, or any other valid state with title+name-entry both hidden —
+        // showing the recover overlay there would COVER the game and look broken.
+        // The window.error handler will still surface the recover button if a real JS error fires.
       }, 1500);
     });
   })();

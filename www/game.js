@@ -1148,7 +1148,24 @@ function resize(){
     legend.style.right = Math.max(0, Math.floor(ox)) + 'px';
   }
 }
-addEventListener('resize', resize); resize();
+addEventListener('resize', resize);
+addEventListener('orientationchange', () => { setTimeout(resize, 50); setTimeout(resize, 250); });
+// Re-resize when the page becomes visible (iOS sometimes reports innerWidth=0 during splash)
+document.addEventListener('visibilitychange', () => { if(!document.hidden) resize(); });
+resize();
+// Defensive: if initial resize produced zero dimensions, retry a few times until WKWebView reports valid sizes
+(function ensureValidResize(){
+  let attempts = 0;
+  const t = setInterval(() => {
+    attempts++;
+    if((!W || !H || !sc || sc < 0.01) && innerWidth > 0 && innerHeight > 0){
+      if(window.bootLog) window.bootLog('resize-retry-'+attempts+'-'+innerWidth+'x'+innerHeight);
+      resize();
+    }
+    if(W && H && sc > 0.01) clearInterval(t);
+    if(attempts >= 30) clearInterval(t); // give up after ~6s
+  }, 200);
+})();
 
 // ─── CUSTOMIZABLE KEY BINDINGS ───
 const DEFAULT_BINDS_P1 = {
@@ -5664,6 +5681,19 @@ function gameLoop(now){
   }
 
   // RENDER
+  // Defensive: if W/H/sc are invalid (iOS WKWebView reported 0 during splash), force a resize
+  if(!W || !H || !sc || sc < 0.01){
+    if(innerWidth > 0 && innerHeight > 0){
+      resize();
+    } else {
+      // Surface to user so they know the canvas is in a bad state
+      if(window.__renderFailLogged !== true){
+        window.__renderFailLogged = true;
+        if(window.bootLog) window.bootLog('render-canvas-zero-W=' + W + '-H=' + H + '-sc=' + sc + '-iw=' + innerWidth + '-ih=' + innerHeight);
+        if(typeof makeBootBadge === 'function') makeBootBadge();
+      }
+    }
+  }
   ctx.save();ctx.clearRect(0,0,W,H);
   ctx.fillStyle='#050510';ctx.fillRect(0,0,W,H);
   // Bottom-anchored zoom: floor stays pinned at screen bottom,
@@ -5676,15 +5706,21 @@ function gameLoop(now){
   ctx.translate(renderOx + shX * dynSc, renderOy + shY * dynSc);
   ctx.scale(dynSc, dynSc);
 
-  drawArena(gameTime);
+  try { drawArena(gameTime); } catch(e){ if(window.bootLog) window.bootLog('drawArena-err:'+(e.message||e)); }
 
   if(state!=='title'){
-    if(p1&&p2){
-      if(p1.dead)drawCroc(p1);if(p2.dead)drawCroc(p2);
-      if(!p1.dead)drawCroc(p1);if(!p2.dead)drawCroc(p2);
-    }
-    if(mysteryBox)drawMysteryBox();
-    drawProjectiles();drawParts();drawFloats();drawSlam(rawDt);postFX(rawDt);
+    try {
+      if(p1&&p2){
+        if(p1.dead)drawCroc(p1);if(p2.dead)drawCroc(p2);
+        if(!p1.dead)drawCroc(p1);if(!p2.dead)drawCroc(p2);
+      }
+    } catch(e){ if(window.bootLog) window.bootLog('drawCroc-err:'+(e.message||e)); }
+    try { if(mysteryBox)drawMysteryBox(); } catch(e){ if(window.bootLog) window.bootLog('drawBox-err:'+(e.message||e)); }
+    try { drawProjectiles(); } catch(e){ if(window.bootLog) window.bootLog('drawProj-err:'+(e.message||e)); }
+    try { drawParts(); } catch(e){ if(window.bootLog) window.bootLog('drawParts-err:'+(e.message||e)); }
+    try { drawFloats(); } catch(e){ if(window.bootLog) window.bootLog('drawFloats-err:'+(e.message||e)); }
+    try { drawSlam(rawDt); } catch(e){ if(window.bootLog) window.bootLog('drawSlam-err:'+(e.message||e)); }
+    try { postFX(rawDt); } catch(e){ if(window.bootLog) window.bootLog('postFX-err:'+(e.message||e)); }
   } else {
     if(!PERF_LOW){const tv=ctx.createRadialGradient(AW/2,AH/2,AW*.2,AW/2,AH/2,AW*.7);
     tv.addColorStop(0,'transparent');tv.addColorStop(1,'rgba(0,0,0,.55)');
