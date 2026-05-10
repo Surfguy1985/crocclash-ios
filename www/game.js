@@ -1383,6 +1383,22 @@ function bindTouchBtn(el, stateObj, key, isAction){
   });
 }
 
+// DIAG: global touchstart listener that fires BEFORE per-button handlers.
+// Logs raw clientX/Y, element under finger, and whether the touch lands inside
+// the home-indicator gesture zone (bottom ~34px of iPhone with home bar).
+document.addEventListener('touchstart', (e) => {
+  if(!window.__telemetry) return;
+  const t = e.changedTouches[0];
+  if(!t) return;
+  const el = document.elementFromPoint(t.clientX, t.clientY);
+  const btn = el?.closest?.('[data-__bound]');
+  const vh = window.innerHeight;
+  const distFromBottom = vh - t.clientY;
+  const inGestureZone = distFromBottom < 34;
+  window.__telemetry.lastTouch = 'x='+Math.round(t.clientX)+' y='+Math.round(t.clientY)+' fromBot='+Math.round(distFromBottom)+(inGestureZone?' [GZ!]':'')+' el='+(el?.tagName||'?')+'.'+((el?.className||'').toString().slice(0,12))+' btn='+(btn?(btn.className||'').slice(0,15):'NONE');
+  window.__telemetry.touchCount = (window.__telemetry.touchCount||0) + 1;
+}, { passive: true, capture: true });
+
 // Global touchmove: handle finger sliding off a button or onto another button.
 // This fires when the user starts on button A and drags to button B — standard arcade pattern.
 document.addEventListener('touchmove', (e) => {
@@ -5824,6 +5840,7 @@ function drawTelemetry(){
       'p1: ' + (p1 ? ('atkCD='+p1.atkCD.toFixed(2)+' atk='+(p1.atk?1:0)+' x='+Math.round(p1.x)+' vx='+Math.round(p1.vx)) : 'null'),
       'timers: dt='+(tel.rawDt||0).toFixed(3)+' rT='+(tel.roundTimer||0).toFixed(1)+' cdT='+(tel.cdTimer||0).toFixed(1)+' hs='+(tel.hsTimer||0).toFixed(2)+' sm='+(tel.smTimer||0).toFixed(2),
       'press#'+(tel.pressCount||0)+': '+(tel.lastPress||'(none)'),
+      'touch#'+(tel.touchCount||0)+': '+(tel.lastTouch||'(none)'),
       tel.lastErr ? 'ERR: '+tel.lastErr.slice(0,60) : ''
     ];
     const dctx = ctx;
@@ -5832,7 +5849,7 @@ function drawTelemetry(){
     dctx.font = '600 11px monospace';
     dctx.fillStyle = 'rgba(0,0,0,0.72)';
     const lh = 14; const padX = 8; const padY = 6;
-    const w = 360; const h = lines.length * lh + padY * 2;
+    const w = 420; const h = lines.length * lh + padY * 2;
     dctx.fillRect(4, 4, w, h);
     dctx.fillStyle = '#7fff7f';
     for(let i = 0; i < lines.length; i++){
