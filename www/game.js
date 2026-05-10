@@ -1301,6 +1301,11 @@ function __pressBtn(btn, stateObj, key, isAction, touchId){
   if(!set){ set = new Set(); __pressedBtns.set(btn, set); }
   set.add(touchId);
   stateObj[key] = 1;
+  // DIAG: log every press so telemetry can show last button + key
+  if(window.__telemetry){
+    window.__telemetry.lastPress = (stateObj === ts ? 'ts' : (stateObj === ts2 ? 'ts2' : '?')) + '.' + String(key) + ' id=' + touchId + ' cls=' + (btn.className||'').slice(0,20);
+    window.__telemetry.pressCount = (window.__telemetry.pressCount||0) + 1;
+  }
   btn.classList.add('__pressed');
   if(isAction && typeof guestInputBuf !== 'undefined' && guestInputBuf && (key in guestInputBuf)){
     guestInputBuf[key] = true;
@@ -5788,6 +5793,7 @@ function drawTelemetry(){
       'reg=' + __touchRegistry.size + ' jp.KeyS=' + (jp.KeyS?1:0) + ' jp.KeyR=' + (jp.KeyR?1:0),
       'p1: ' + (p1 ? ('alive='+p1.alive+' dead='+p1.dead+' frz='+(p1.frozen?1:0)+' lch='+(p1.launched?1:0)+' stn='+(p1.stunned?1:0)) : 'null'),
       'p1: ' + (p1 ? ('atkCD='+p1.atkCD.toFixed(2)+' atk='+(p1.atk?1:0)+' x='+Math.round(p1.x)+' vx='+Math.round(p1.vx)) : 'null'),
+      'press#'+(tel.pressCount||0)+': '+(tel.lastPress||'(none)'),
       tel.lastErr ? 'ERR: '+tel.lastErr.slice(0,60) : ''
     ];
     const dctx = ctx;
