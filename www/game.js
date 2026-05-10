@@ -5800,10 +5800,9 @@ function initViralSystems(){
 }
 
 // ─── MAIN LOOP ───
-// God-mode telemetry overlay — visible on TestFlight to diagnose stuck input.
-// Triple-tap canvas to toggle. Shows state, ts.left/right/attack, p1.frozen/launched/dead, atkCD, FPS.
-// DEFAULT ON for this diagnostic build — triple-tap canvas/HUD to toggle off
-window.__telemetry = { on: true, fps: 0, frames: 0, lastT: 0, lastErr: '' };
+// God-mode telemetry overlay — hidden by default in production builds.
+// Triple-tap canvas/HUD to toggle ON for diagnostics if needed.
+window.__telemetry = { on: false, fps: 0, frames: 0, lastT: 0, lastErr: '' };
 (function setupTelemetryToggle(){
   let taps = 0; let last = 0;
   const handler = () => {
