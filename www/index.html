@@ -471,7 +471,8 @@
     #touch-controls .arow{gap:6px}
     #touch-controls .abtns{gap:6px}
 
-    @media(pointer:coarse){#touch-controls{display:flex}}
+    /* Touch controls are NEVER shown by default — only when JS calls showTouchControls() to enter a match.
+       Previously this rule force-showed them on every screen (title, name-entry, menus) on coarse-pointer devices. */
     /* ══════ ONLINE LOBBY ══════ */
     #online-lobby{
       position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
