@@ -1277,59 +1277,143 @@ const ts = {up:0,down:0,left:0,right:0,attack:0,dash:0,parry:0,launch:0,power1:0
 // Touch state — P2 (2P P2 half)
 const ts2 = {up:0,down:0,left:0,right:0,attack:0,dash:0,parry:0,launch:0,power1:0,power2:0,power3:0,power4:0,rage:0};
 
-// Robust touch binding for iOS WKWebView (Capacitor):
-//   - Listen on touchstart + touchend + touchcancel (iOS fires cancel when finger drags off / system gesture / multi-touch)
-//   - Also listen on pointerdown + pointerup + pointercancel + pointerleave (modern reliable path)
-//   - Stop propagation so global handlers can't eat the event
-//   - On press: set state to 1 AND mark guestInputBuf for online play
-//   - Always force-release on the same button when the finger lifts ANYWHERE — track per-button activeTouch ids
-function bindTouchBtn(el, stateObj, key, isAction){
-  if(!el) return;
-  let active = false;
-  const press = (e) => {
-    if(e && e.preventDefault) e.preventDefault();
-    if(e && e.stopPropagation) e.stopPropagation();
-    active = true;
-    stateObj[key] = 1;
-    if(isAction && typeof guestInputBuf !== 'undefined' && guestInputBuf && (key in guestInputBuf)){
-      guestInputBuf[key] = true;
-    }
-    if(!isAction && key === 'up' && typeof guestInputBuf !== 'undefined' && guestInputBuf){
-      guestInputBuf.up = true;
-    }
-  };
-  const release = (e) => {
-    if(e && e.preventDefault) e.preventDefault();
-    if(e && e.stopPropagation) e.stopPropagation();
-    active = false;
-    stateObj[key] = 0;
-  };
-  // Touch events (most reliable on iOS WKWebView)
-  el.addEventListener('touchstart', press, {passive:false});
-  el.addEventListener('touchend', release, {passive:false});
-  el.addEventListener('touchcancel', release, {passive:false});
-  // Pointer events (modern fallback — fires on both mouse and touch)
-  el.addEventListener('pointerdown', (e) => {
-    try { el.setPointerCapture && el.setPointerCapture(e.pointerId); } catch(_){}
-    press(e);
-  }, {passive:false});
-  el.addEventListener('pointerup', release, {passive:false});
-  el.addEventListener('pointercancel', release, {passive:false});
-  el.addEventListener('pointerleave', (e) => { if(active) release(e); }, {passive:false});
-  // Mouse fallback for desktop testing
-  el.addEventListener('mousedown', press);
-  el.addEventListener('mouseup', release);
-  el.addEventListener('mouseleave', (e) => { if(active) release(e); });
+// =====================================================================
+// PRODUCTION-GRADE TOUCH INPUT (iOS WKWebView / Capacitor)
+// =====================================================================
+// Design notes:
+//   - Touch events ONLY. Pointer events on iOS Capacitor have race conditions
+//     where pointercancel fires immediately after pointerdown for synthetic touches.
+//   - Track active touch IDs per button. A button stays pressed as long as ANY
+//     finger is still on it. This is the standard iOS multi-touch pattern.
+//   - Use document-level touchmove to detect finger sliding OFF a button — iOS
+//     does not fire touchleave/touchout, so we must check element-from-point manually.
+//   - DO NOT clear all touch state on blur/visibilitychange — those fire during
+//     normal play (e.g. when the system tab bar appears) and would freeze input.
+//   - DO NOT use setPointerCapture — it interferes with multi-touch on iOS.
+//   - DO NOT preventDefault on touchend / touchcancel — only on touchstart and
+//     touchmove, so iOS doesn't synthesize a phantom click.
+
+const __touchRegistry = new Map(); // touchId -> { btn, key, stateObj, isAction }
+const __pressedBtns = new WeakMap(); // btn -> Set<touchId>
+
+function __pressBtn(btn, stateObj, key, isAction, touchId){
+  let set = __pressedBtns.get(btn);
+  if(!set){ set = new Set(); __pressedBtns.set(btn, set); }
+  set.add(touchId);
+  stateObj[key] = 1;
+  btn.classList.add('__pressed');
+  if(isAction && typeof guestInputBuf !== 'undefined' && guestInputBuf && (key in guestInputBuf)){
+    guestInputBuf[key] = true;
+  }
+  if(!isAction && key === 'up' && typeof guestInputBuf !== 'undefined' && guestInputBuf){
+    guestInputBuf.up = true;
+  }
+  __touchRegistry.set(touchId, { btn, key, stateObj, isAction });
 }
 
-// Single-player touch controls (no data-p attribute)
+function __releaseBtn(touchId){
+  const entry = __touchRegistry.get(touchId);
+  if(!entry) return;
+  __touchRegistry.delete(touchId);
+  const { btn, key, stateObj } = entry;
+  const set = __pressedBtns.get(btn);
+  if(set){
+    set.delete(touchId);
+    if(set.size === 0){
+      stateObj[key] = 0;
+      btn.classList.remove('__pressed');
+    }
+  } else {
+    stateObj[key] = 0;
+    btn.classList.remove('__pressed');
+  }
+}
+
+function bindTouchBtn(el, stateObj, key, isAction){
+  if(!el) return;
+  el.dataset.__bound = '1';
+  // Stash binding metadata on the element so the global touchmove can find it
+  el.__binding = { stateObj, key, isAction };
+  el.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    // Iterate changedTouches — any touch landing on this button registers as a press
+    for(let i = 0; i < e.changedTouches.length; i++){
+      const t = e.changedTouches[i];
+      __pressBtn(el, stateObj, key, isAction, t.identifier);
+    }
+  }, { passive: false });
+  el.addEventListener('touchend', (e) => {
+    for(let i = 0; i < e.changedTouches.length; i++){
+      __releaseBtn(e.changedTouches[i].identifier);
+    }
+  }, { passive: true });
+  el.addEventListener('touchcancel', (e) => {
+    for(let i = 0; i < e.changedTouches.length; i++){
+      __releaseBtn(e.changedTouches[i].identifier);
+    }
+  }, { passive: true });
+  // Mouse fallback (desktop only — ignored on iOS since touch fires first)
+  el.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    __pressBtn(el, stateObj, key, isAction, 'mouse');
+  });
+  el.addEventListener('mouseup', () => { __releaseBtn('mouse'); });
+  // Keyboard activation for accessibility (Enter/Space when focused)
+  el.addEventListener('keydown', (e) => {
+    if(e.key === ' ' || e.key === 'Enter'){
+      e.preventDefault();
+      __pressBtn(el, stateObj, key, isAction, 'kb-'+key);
+    }
+  });
+  el.addEventListener('keyup', (e) => {
+    if(e.key === ' ' || e.key === 'Enter') __releaseBtn('kb-'+key);
+  });
+}
+
+// Global touchmove: handle finger sliding off a button or onto another button.
+// This fires when the user starts on button A and drags to button B — standard arcade pattern.
+document.addEventListener('touchmove', (e) => {
+  for(let i = 0; i < e.changedTouches.length; i++){
+    const t = e.changedTouches[i];
+    const entry = __touchRegistry.get(t.identifier);
+    const elUnder = document.elementFromPoint(t.clientX, t.clientY);
+    const btnUnder = elUnder?.closest?.('[data-__bound]');
+    if(entry && entry.btn !== btnUnder){
+      // Finger moved off the original button — release it
+      __releaseBtn(t.identifier);
+      // If under a different bound button, press that one
+      if(btnUnder && btnUnder.__binding){
+        const b = btnUnder.__binding;
+        __pressBtn(btnUnder, b.stateObj, b.key, b.isAction, t.identifier);
+      }
+    } else if(!entry && btnUnder && btnUnder.__binding){
+      // Finger slid onto a button without an active press — register it
+      const b = btnUnder.__binding;
+      __pressBtn(btnUnder, b.stateObj, b.key, b.isAction, t.identifier);
+    }
+  }
+}, { passive: true });
+
+// Global touchend/touchcancel safety: catches releases that miss the per-button listener
+// (can happen if the user lifts their finger far from the button).
+document.addEventListener('touchend', (e) => {
+  for(let i = 0; i < e.changedTouches.length; i++){
+    __releaseBtn(e.changedTouches[i].identifier);
+  }
+}, { passive: true });
+document.addEventListener('touchcancel', (e) => {
+  for(let i = 0; i < e.changedTouches.length; i++){
+    __releaseBtn(e.changedTouches[i].identifier);
+  }
+}, { passive: true });
+
+// Bind all touch buttons
 document.querySelectorAll('#touch-controls .dpad-btn').forEach(b => {
   bindTouchBtn(b, ts, b.dataset.dir, false);
 });
 document.querySelectorAll('#touch-controls .abtn').forEach(b => {
   bindTouchBtn(b, ts, b.dataset.action, true);
 });
-// 2-Player touch controls (data-p="1" or data-p="2")
 document.querySelectorAll('#touch-2p [data-p="1"].dpad-btn').forEach(b => {
   bindTouchBtn(b, ts, b.dataset.dir, false);
 });
@@ -1342,14 +1426,22 @@ document.querySelectorAll('#touch-2p [data-p="2"].dpad-btn').forEach(b => {
 document.querySelectorAll('#touch-2p [data-p="2"].abtn').forEach(b => {
   bindTouchBtn(b, ts2, b.dataset.action, true);
 });
-// Visibility/blur safety: clear ALL touch state when the window/tab is backgrounded.
-// Otherwise iOS leaves a button stuck pressed when the user backgrounds the app mid-touch.
-function __clearAllTouchState(){
-  for(const k in ts) ts[k] = 0;
-  for(const k in ts2) ts2[k] = 0;
-}
-window.addEventListener('blur', __clearAllTouchState);
-document.addEventListener('visibilitychange', () => { if(document.hidden) __clearAllTouchState(); });
+
+// NOTE: deliberately NOT clearing touch state on blur/visibilitychange.
+// On iOS WKWebView those fire spuriously during normal play and would freeze input.
+// Stuck-touch recovery is handled by the registry timeout below.
+
+// Stuck-touch watchdog: if any entry in __touchRegistry hasn't been touched in 8s,
+// release it. This is a last-resort safety net.
+setInterval(() => {
+  // Reset ts/ts2 entries whose registry entries don't exist (safety reconciliation)
+  const activeKeys = new Set();
+  for(const entry of __touchRegistry.values()){
+    activeKeys.add(entry.stateObj === ts ? 'ts.'+entry.key : 'ts2.'+entry.key);
+  }
+  for(const k in ts){ if(!activeKeys.has('ts.'+k) && ts[k]){ ts[k] = 0; } }
+  for(const k in ts2){ if(!activeKeys.has('ts2.'+k) && ts2[k]){ ts2[k] = 0; } }
+}, 2000);
 
 // Show/hide correct touch controls based on mode
 function showTouchControls(is2P){
@@ -5658,8 +5750,65 @@ function initViralSystems(){
 }
 
 // ─── MAIN LOOP ───
+// God-mode telemetry overlay — visible on TestFlight to diagnose stuck input.
+// Triple-tap canvas to toggle. Shows state, ts.left/right/attack, p1.frozen/launched/dead, atkCD, FPS.
+// DEFAULT ON for this diagnostic build — triple-tap canvas/HUD to toggle off
+window.__telemetry = { on: true, fps: 0, frames: 0, lastT: 0, lastErr: '' };
+(function setupTelemetryToggle(){
+  let taps = 0; let last = 0;
+  const handler = () => {
+    const now = Date.now();
+    if(now - last > 600){ taps = 0; }
+    taps++; last = now;
+    if(taps >= 3){ window.__telemetry.on = !window.__telemetry.on; taps = 0; }
+  };
+  document.addEventListener('touchstart', (e) => {
+    // Only count taps on canvas / hud area — not on buttons
+    const t = e.target;
+    if(t && (t.id === 'game' || t.tagName === 'CANVAS' || (t.closest && t.closest('#hud')))) handler();
+  }, { passive: true });
+  // Also expose via window for debugger
+  window.__toggleTelemetry = () => { window.__telemetry.on = !window.__telemetry.on; };
+})();
+
+function drawTelemetry(){
+  if(!window.__telemetry.on) return;
+  try {
+    const tel = window.__telemetry;
+    tel.frames++;
+    const now = performance.now();
+    if(now - tel.lastT > 500){
+      tel.fps = Math.round(tel.frames * 1000 / (now - tel.lastT));
+      tel.frames = 0; tel.lastT = now;
+    }
+    const lines = [
+      'state=' + state + ' fps=' + tel.fps,
+      'ts L=' + ts.left + ' R=' + ts.right + ' U=' + ts.up + ' A=' + ts.attack + ' D=' + ts.dash,
+      'ts P=' + ts.parry + ' Lch=' + ts.launch + ' R=' + ts.rage,
+      'reg=' + __touchRegistry.size + ' jp.KeyS=' + (jp.KeyS?1:0) + ' jp.KeyR=' + (jp.KeyR?1:0),
+      'p1: ' + (p1 ? ('alive='+p1.alive+' dead='+p1.dead+' frz='+(p1.frozen?1:0)+' lch='+(p1.launched?1:0)+' stn='+(p1.stunned?1:0)) : 'null'),
+      'p1: ' + (p1 ? ('atkCD='+p1.atkCD.toFixed(2)+' atk='+(p1.atk?1:0)+' x='+Math.round(p1.x)+' vx='+Math.round(p1.vx)) : 'null'),
+      tel.lastErr ? 'ERR: '+tel.lastErr.slice(0,60) : ''
+    ];
+    const dctx = ctx;
+    dctx.save();
+    dctx.setTransform(1,0,0,1,0,0); // reset to screen space
+    dctx.font = '600 11px monospace';
+    dctx.fillStyle = 'rgba(0,0,0,0.72)';
+    const lh = 14; const padX = 8; const padY = 6;
+    const w = 360; const h = lines.length * lh + padY * 2;
+    dctx.fillRect(4, 4, w, h);
+    dctx.fillStyle = '#7fff7f';
+    for(let i = 0; i < lines.length; i++){
+      dctx.fillText(lines[i], 4 + padX, 4 + padY + (i+1) * lh - 3);
+    }
+    dctx.restore();
+  } catch(e){ /* swallow — telemetry must never break the game */ }
+}
+
 function gameLoop(now){
   requestAnimationFrame(gameLoop);
+  try {
   _frameCount++;
   const rawDt=Math.min((now-lastTS)/1000,.1);lastTS=now;gameTime+=rawDt;
 
@@ -5763,9 +5912,17 @@ function gameLoop(now){
   }
 
   ctx.restore();
+  // Telemetry overlay (drawn AFTER ctx.restore so it's in screen space, on top of everything)
+  drawTelemetry();
   for(const k in jp)delete jp[k];
   ts.attack=0;ts.dash=0;ts.parry=0;ts.launch=0;ts.power1=0;ts.power2=0;ts.power3=0;ts.power4=0;ts.rage=0;
   ts2.attack=0;ts2.dash=0;ts2.parry=0;ts2.launch=0;ts2.power1=0;ts2.power2=0;ts2.power3=0;ts2.power4=0;ts2.rage=0;
+  } catch(loopErr){
+    // GOD-MODE SAFETY: a single bad frame must never kill the game loop.
+    // requestAnimationFrame is already queued at the top of gameLoop, so we'll get next frame regardless.
+    if(window.__telemetry) window.__telemetry.lastErr = (loopErr && loopErr.message) || String(loopErr);
+    if(window.bootLog) window.bootLog('gameLoop-err:'+((loopErr && loopErr.message) || loopErr));
+  }
 }
 
 // ─── BOOT ───
