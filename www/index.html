@@ -185,28 +185,73 @@
     /* ══════ TITLE ══════ */
     #title-screen{
       position:fixed;inset:0;display:flex;flex-direction:column;
-      align-items:center;justify-content:flex-end;z-index:100;
+      align-items:center;justify-content:center;z-index:100;
       background:#050510;overflow:hidden;
+      padding:env(safe-area-inset-top,0) env(safe-area-inset-right,0) env(safe-area-inset-bottom,0) env(safe-area-inset-left,0);
     }
     #title-screen.hidden{display:none}
     .poster-bg{position:absolute;inset:0;z-index:0;background:url('poster-tall.webp') center top / contain no-repeat;filter:brightness(0.85) saturate(1.15);background-color:#050510}
     @media(min-aspect-ratio:1/1){.poster-bg{background-size:cover;background-position:center center}}
     .poster-vignette{position:absolute;inset:0;z-index:1;background:linear-gradient(180deg,transparent 0%,transparent 30%,rgba(5,5,16,.4) 55%,rgba(5,5,16,.92) 78%,rgba(5,5,16,1) 100%),radial-gradient(ellipse at 50% 40%,transparent 40%,rgba(5,5,16,.4) 100%)}
-    .title-content{position:relative;z-index:2;display:flex;flex-direction:column;align-items:center;gap:10px;padding-bottom:clamp(18px,4vh,42px);width:100%}
-    .tlogo{font-family:var(--fh);font-size:clamp(3.5rem,12vw,8rem);letter-spacing:.1em;line-height:.85;background:linear-gradient(180deg,#fff 0%,#ffd740 35%,#ff9100 70%,#ff3d00 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;filter:drop-shadow(0 0 80px rgba(255,150,0,.4)) drop-shadow(0 4px 0 rgba(0,0,0,.7));text-transform:uppercase;text-align:center}
-    .tsub{font-family:var(--fd);font-size:clamp(11px,1.8vw,16px);color:var(--acc);letter-spacing:.4em;text-transform:uppercase;opacity:.85;text-shadow:0 0 20px rgba(251,191,36,.3)}
-    .ttagline{font-family:var(--fh);font-size:clamp(12px,2vw,18px);color:#ff6b35;letter-spacing:.12em;text-transform:uppercase;text-shadow:0 0 15px rgba(255,107,53,.4);margin-top:-2px}
-    .tbtns{display:flex;gap:16px;flex-wrap:wrap;justify-content:center;margin-top:6px}
-    .tkeys{font-size:clamp(9px,1.2vw,11px);color:var(--mut);text-align:center;line-height:2;max-width:600px;padding:0 16px}
+    /* title-content uses min-height + flex centering and can scroll if it ever overflows the viewport */
+    .title-content{
+      position:relative;z-index:2;display:flex;flex-direction:column;align-items:center;
+      gap:clamp(4px,1vh,10px);
+      width:100%;max-width:760px;
+      max-height:100dvh;max-height:100vh;
+      padding:clamp(8px,2vh,24px) clamp(12px,3vw,28px);
+      overflow-y:auto;overflow-x:hidden;
+      -webkit-overflow-scrolling:touch;scrollbar-width:none;
+    }
+    .title-content::-webkit-scrollbar{display:none}
+    /* Logo — scales down aggressively on short viewports (landscape phone) */
+    .tlogo{
+      font-family:var(--fh);
+      font-size:clamp(2.4rem,min(11vw,12vh),7rem);
+      letter-spacing:.1em;line-height:.85;
+      background:linear-gradient(180deg,#fff 0%,#ffd740 35%,#ff9100 70%,#ff3d00 100%);
+      -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+      filter:drop-shadow(0 0 60px rgba(255,150,0,.4)) drop-shadow(0 4px 0 rgba(0,0,0,.7));
+      text-transform:uppercase;text-align:center;
+      /* Fallback color so logo is visible even if -webkit-background-clip:text fails (older WKWebView) */
+      color:#ffb732;
+    }
+    .tsub{font-family:var(--fd);font-size:clamp(10px,1.6vw,15px);color:var(--acc);letter-spacing:.32em;text-transform:uppercase;opacity:.85;text-shadow:0 0 20px rgba(251,191,36,.3);text-align:center;line-height:1.2}
+    .ttagline{font-family:var(--fh);font-size:clamp(11px,1.8vw,17px);color:#ff6b35;letter-spacing:.1em;text-transform:uppercase;text-shadow:0 0 15px rgba(255,107,53,.4);text-align:center;line-height:1.15;padding:0 8px}
+    .tbtns{display:flex;gap:clamp(8px,1.5vw,16px);flex-wrap:wrap;justify-content:center;margin-top:clamp(2px,1vh,8px)}
+    .tbtns .btn{padding:clamp(10px,1.6vh,14px) clamp(18px,3vw,28px);font-size:clamp(12px,1.6vw,15px)}
+    /* Keyboard legend — hidden on touch devices (the dedicated mobile controls render this irrelevant + ugly) */
+    .tkeys{font-size:clamp(9px,1.1vw,11px);color:var(--mut);text-align:center;line-height:1.7;max-width:600px;padding:0 16px}
     .tkeys b{color:var(--txt);font-weight:600}
+    @media(pointer:coarse){.tkeys{display:none}}
     .tver{font-size:10px;color:rgba(255,255,255,.2);letter-spacing:.2em;margin-top:2px}
     #title-streak{
-      font-family:var(--fh);font-size:clamp(14px,2.5vw,22px);
+      font-family:var(--fh);font-size:clamp(13px,2.2vw,20px);
       color:var(--gold);letter-spacing:.12em;
       text-shadow:0 0 18px rgba(255,215,64,.5);
-      display:none;margin-top:2px;
+      display:none;margin-top:0;
     }
-    #title-totalwins{font-size:11px;color:var(--mut);letter-spacing:.15em;}
+    #title-totalwins{
+      font-size:clamp(10px,1.3vw,12px);color:rgba(255,255,255,.78);
+      letter-spacing:.1em;text-align:center;line-height:1.4;
+      padding:4px 10px;border-radius:8px;
+      background:rgba(0,0,0,.35);backdrop-filter:blur(6px);
+      -webkit-backdrop-filter:blur(6px);
+    }
+    #title-totalwins:empty{display:none}
+
+    /* Compact layout for short landscape viewports (phone landscape ≤ 480px tall) */
+    @media (max-height: 480px){
+      .title-content{gap:6px;padding:6px 16px}
+      .tlogo{font-size:clamp(2rem,9vw,3.6rem)}
+      .tsub{font-size:11px;letter-spacing:.28em}
+      .ttagline{font-size:11px}
+      .tbtns{gap:8px;margin-top:4px}
+      .tbtns .btn{padding:10px 18px;font-size:12px}
+      #btn-controls,#btn-changename{padding:6px 14px !important;font-size:11px !important;margin-top:2px !important}
+      #title-playername{font-size:.75rem !important;margin-top:2px !important}
+      .tver{font-size:9px;margin-top:0}
+    }
 
     /* ══════ HUD ══════ */
     #hud{position:fixed;top:0;left:0;right:0;display:flex;justify-content:space-between;align-items:flex-start;padding:14px 20px;pointer-events:none;z-index:10}
