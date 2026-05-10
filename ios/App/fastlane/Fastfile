@@ -32,9 +32,6 @@ platform :ios do
     get_provisioning_profile(
       api_key: api_key,
       app_identifier: "com.brycebeck.crocclash",
-      adhoc: false,
-      developer_id: false,
-      development: false,
     )
 
     # Build the .ipa
