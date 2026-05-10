@@ -407,7 +407,13 @@
     .tdpad{position:relative;width:120px;height:120px;flex-shrink:0}
     .dpad-ring{position:absolute;inset:0;border-radius:50%;background:rgba(255,255,255,.03);border:1.5px solid rgba(255,255,255,.08)}
     @media (pointer:fine){.dpad-ring{box-shadow:0 0 20px rgba(0,0,0,.4) inset}}
-    .dpad-btn{position:absolute;width:42px;height:42px;border-radius:12px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);color:rgba(255,255,255,.7);font-size:16px;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none;touch-action:none;-ms-touch-action:none;will-change:opacity;cursor:pointer}
+    .dpad-btn{position:absolute;width:48px;height:48px;border-radius:12px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);color:rgba(255,255,255,.7);font-size:18px;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none;touch-action:none;-ms-touch-action:none;will-change:opacity;cursor:pointer;box-sizing:border-box}
+    /* Invisible hitbox expander for d-pad — +8px halo */
+    .dpad-btn::before{
+      content:'';position:absolute;inset:-8px;
+      pointer-events:auto;background:transparent;
+      -webkit-tap-highlight-color:transparent;
+    }
     /* Children of touch buttons must not capture pointer events — always bubble to the button */
     .dpad-btn *,.abtn *{pointer-events:none}
     .dpad-btn:active{background:rgba(255,255,255,.22);opacity:.85}
@@ -418,16 +424,25 @@
     .abtns{display:flex;flex-direction:column;gap:4px;align-items:flex-end}
     .arow{display:flex;gap:4px}
     .abtn{
-      width:52px;height:48px;border-radius:14px;
+      width:60px;height:56px;border-radius:14px;
       font-family:var(--fh);font-size:9px;letter-spacing:.04em;
       display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;
       -webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none;touch-action:none;-ms-touch-action:none;cursor:pointer;
-      border:none;color:#fff;position:relative;overflow:hidden;
+      border:none;color:#fff;position:relative;
       will-change:opacity;
+      box-sizing:border-box;
+    }
+    /* Invisible hitbox expander — taps anywhere within +10px around the visible frame */
+    /* still register on the parent button. pointer-events:auto makes the halo capture */
+    /* taps; event.target resolves to the parent .abtn so the touchstart handler fires. */
+    .abtn::before{
+      content:'';position:absolute;inset:-10px;
+      pointer-events:auto;background:transparent;
+      -webkit-tap-highlight-color:transparent;
     }
     .abtn:active{opacity:.8}
-    .abtn .icon{font-size:16px;line-height:1}
-    .abtn .plabel{font-size:8px;letter-spacing:.03em;opacity:.85}
+    .abtn .icon{font-size:18px;line-height:1;pointer-events:none}
+    .abtn .plabel{font-size:8px;letter-spacing:.03em;opacity:.85;pointer-events:none}
     .abtn.at{background:rgba(220,38,38,.45)}
     .abtn.da{background:rgba(22,163,74,.35)}
     .abtn.pa{background:rgba(109,40,217,.35)}
@@ -452,13 +467,14 @@
     .abtn.rg .plabel{font-weight:700;letter-spacing:.06em}
 
     /* AI mode: single-player controls (bigger buttons) */
-    #touch-controls .tdpad{width:140px;height:140px}
-    #touch-controls .dpad-btn{width:48px;height:48px;border-radius:14px;font-size:18px}
-    #touch-controls .abtn{width:64px;height:58px;border-radius:16px;font-size:10px}
-    #touch-controls .abtn .icon{font-size:20px}
+    #touch-controls .tdpad{width:148px;height:148px}
+    #touch-controls .dpad-btn{width:54px;height:54px;border-radius:14px;font-size:20px}
+    #touch-controls .abtn{width:74px;height:66px;border-radius:16px;font-size:10px}
+    #touch-controls .abtn::before{inset:-12px}
+    #touch-controls .abtn .icon{font-size:22px}
     #touch-controls .abtn .plabel{font-size:9px}
-    #touch-controls .arow{gap:6px}
-    #touch-controls .abtns{gap:6px}
+    #touch-controls .arow{gap:8px}
+    #touch-controls .abtns{gap:8px}
 
     /* Touch controls are NEVER shown by default — only when JS calls showTouchControls() to enter a match.
        Previously this rule force-showed them on every screen (title, name-entry, menus) on coarse-pointer devices. */
