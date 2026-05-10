@@ -1,0 +1,64 @@
+default_platform(:ios)
+
+platform :ios do
+  desc "Build and upload Croc Clash to App Store Connect"
+  lane :release do
+    api_key = app_store_connect_api_key(
+      key_id: ENV["APP_STORE_CONNECT_KEY_ID"],
+      issuer_id: ENV["APP_STORE_CONNECT_ISSUER_ID"],
+      key_content: ENV["APP_STORE_CONNECT_PRIVATE_KEY"],
+      is_key_content_base64: true,
+      in_house: false,
+    )
+
+    # Bump build number based on App Store Connect's latest
+    increment_build_number(
+      build_number: latest_testflight_build_number(
+        api_key: api_key,
+        app_identifier: "com.brycebeck.crocclash",
+      ) + 1,
+      xcodeproj: "App.xcodeproj",
+    )
+
+    # Fetch (or create) Distribution cert
+    get_certificates(
+      api_key: api_key,
+      keychain_path: ENV["KEYCHAIN_PATH"],
+      keychain_password: ENV["KEYCHAIN_PASSWORD"],
+      generate_apple_certs: true,
+    )
+
+    # Fetch (or create) App Store provisioning profile
+    get_provisioning_profile(
+      api_key: api_key,
+      app_identifier: "com.brycebeck.crocclash",
+      adhoc: false,
+      developer_id: false,
+      development: false,
+    )
+
+    # Build the .ipa
+    build_app(
+      workspace: "App.xcworkspace",
+      scheme: "App",
+      configuration: "Release",
+      export_method: "app-store",
+      export_options: {
+        provisioningProfiles: {
+          "com.brycebeck.crocclash" => ENV["sigh_com.brycebeck.crocclash_appstore_profile-name"] || ENV["SIGH_PROFILE_NAME"]
+        }
+      },
+      clean: true,
+    )
+
+    # Upload to App Store Connect (TestFlight processing happens automatically)
+    upload_to_app_store(
+      api_key: api_key,
+      skip_metadata: true,
+      skip_screenshots: true,
+      skip_app_version_update: true,
+      submit_for_review: false,
+      precheck_include_in_app_purchases: false,
+    )
+  end
+end

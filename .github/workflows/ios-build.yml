@@ -9,6 +9,7 @@ on:
       - 'CODEMAGIC_PHONE_SETUP.md'
       - 'FINAL_STEPS.md'
       - 'codemagic.yaml'
+      - '**/*.md'
 
 jobs:
   build:
@@ -19,9 +20,6 @@ jobs:
     env:
       BUNDLE_ID: com.brycebeck.crocclash
       APPLE_TEAM_ID: USZ4L8LG24
-      APP_STORE_APP_ID: 6767337661
-      WORKSPACE: ios/App/App.xcworkspace
-      SCHEME: App
 
     steps:
       - name: Checkout
@@ -32,6 +30,12 @@ jobs:
         with:
           node-version: 20
 
+      - name: Setup Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: 3.2
+          bundler-cache: false
+
       - name: Install npm deps
         run: npm install
 
@@ -41,128 +45,40 @@ jobs:
           chmod +x scripts/install-ios-assets.sh
           ./scripts/install-ios-assets.sh
 
-      - name: Show Xcode version
+      - name: Install fastlane
+        working-directory: ios/App
         run: |
-          sudo xcode-select -p
-          xcodebuild -version
+          gem install bundler --no-document
+          bundle install
 
       - name: Install CocoaPods
+        working-directory: ios/App
         run: |
-          cd ios/App
           pod install --repo-update
 
-      - name: Decode App Store Connect API key
+      - name: Setup keychain
         run: |
-          mkdir -p ~/.appstoreconnect/private_keys
-          echo "${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}" | base64 --decode > ~/.appstoreconnect/private_keys/AuthKey_${{ secrets.APP_STORE_CONNECT_KEY_ID }}.p8
-          ls -la ~/.appstoreconnect/private_keys/
-
-      - name: Bump build number from App Store Connect
-        run: |
-          # Use altool to query latest build number
-          LATEST=$(xcrun altool --list-apps \
-            --apiKey "${{ secrets.APP_STORE_CONNECT_KEY_ID }}" \
-            --apiIssuer "${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}" 2>&1 | grep -i "$BUNDLE_ID" | head -1 || echo "")
-          # Default fallback if query fails
-          BUILD_NUMBER=$(date +%s)
-          echo "Setting build number to $BUILD_NUMBER"
-          cd ios/App
-          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" App/Info.plist
-          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString 1.0" App/Info.plist
-
-      - name: Setup signing keychain (download cert + profile via App Store Connect API)
-        run: |
-          # Use fastlane to handle signing — simpler and more reliable than custom scripts
-          gem install fastlane --no-document --silent
-          # Set up keychain
           KEYCHAIN_NAME="build.keychain"
           KEYCHAIN_PASSWORD="tempkeychainpw"
+          KEYCHAIN_PATH="$HOME/Library/Keychains/$KEYCHAIN_NAME-db"
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_NAME"
           security default-keychain -s "$KEYCHAIN_NAME"
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_NAME"
           security set-keychain-settings -t 7200 "$KEYCHAIN_NAME"
-          echo "KEYCHAIN_NAME=$KEYCHAIN_NAME" >> $GITHUB_ENV
+          echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> $GITHUB_ENV
           echo "KEYCHAIN_PASSWORD=$KEYCHAIN_PASSWORD" >> $GITHUB_ENV
 
-      - name: Fetch certs and profiles via fastlane sigh
+      - name: Run fastlane release
+        working-directory: ios/App
         env:
-          APP_STORE_CONNECT_API_KEY_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
-          APP_STORE_CONNECT_API_KEY_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
-          APP_STORE_CONNECT_API_KEY_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
-          APP_STORE_CONNECT_API_KEY_IS_KEY_CONTENT_BASE64: 'true'
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
+          FASTLANE_DISABLE_COLORS: '1'
+          FASTLANE_HIDE_CHANGELOG: '1'
+          FASTLANE_SKIP_UPDATE_CHECK: '1'
         run: |
-          cd ios/App
-          fastlane run app_store_connect_api_key \
-            key_id:"$APP_STORE_CONNECT_API_KEY_KEY_ID" \
-            issuer_id:"$APP_STORE_CONNECT_API_KEY_ISSUER_ID" \
-            key_content:"$APP_STORE_CONNECT_API_KEY_KEY" \
-            is_key_content_base64:true \
-            in_house:false
-          fastlane run get_certificates \
-            keychain_path:"$HOME/Library/Keychains/$KEYCHAIN_NAME-db" \
-            keychain_password:"$KEYCHAIN_PASSWORD"
-          fastlane run get_provisioning_profile \
-            app_identifier:"$BUNDLE_ID" \
-            adhoc:false
-
-      - name: Build & archive
-        run: |
-          cd ios/App
-          PROFILE_NAME=$(ls *.mobileprovision 2>/dev/null | head -1 || echo "")
-          echo "Profile file: $PROFILE_NAME"
-          # Install profile
-          if [ -n "$PROFILE_NAME" ]; then
-            mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-            cp "$PROFILE_NAME" ~/Library/MobileDevice/Provisioning\ Profiles/
-            echo "Installed profile to ~/Library/MobileDevice/Provisioning Profiles/"
-          fi
-          ls ~/Library/MobileDevice/Provisioning\ Profiles/ || true
-
-          cd ../..
-          xcodebuild \
-            -workspace "$WORKSPACE" \
-            -scheme "$SCHEME" \
-            -configuration Release \
-            -destination 'generic/platform=iOS' \
-            -archivePath build/App.xcarchive \
-            -allowProvisioningUpdates \
-            clean archive \
-            CODE_SIGN_STYLE=Automatic \
-            DEVELOPMENT_TEAM="$APPLE_TEAM_ID"
-
-      - name: Export IPA
-        run: |
-          cat > /tmp/ExportOptions.plist <<EOF
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-            <key>method</key><string>app-store</string>
-            <key>teamID</key><string>$APPLE_TEAM_ID</string>
-            <key>signingStyle</key><string>automatic</string>
-            <key>uploadBitcode</key><false/>
-            <key>uploadSymbols</key><true/>
-            <key>compileBitcode</key><false/>
-            <key>destination</key><string>export</string>
-          </dict>
-          </plist>
-          EOF
-          xcodebuild -exportArchive \
-            -archivePath build/App.xcarchive \
-            -exportOptionsPlist /tmp/ExportOptions.plist \
-            -exportPath build/ipa \
-            -allowProvisioningUpdates
-          ls -la build/ipa/
-
-      - name: Upload to App Store Connect
-        run: |
-          IPA=$(ls build/ipa/*.ipa | head -1)
-          echo "Uploading $IPA"
-          xcrun altool --upload-app \
-            --type ios \
-            --file "$IPA" \
-            --apiKey "${{ secrets.APP_STORE_CONNECT_KEY_ID }}" \
-            --apiIssuer "${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}"
+          bundle exec fastlane release
 
       - name: Upload artifacts on failure
         if: failure()
@@ -170,7 +86,8 @@ jobs:
         with:
           name: build-logs
           path: |
+            ios/App/fastlane/report.xml
+            ios/App/*.ipa
             ~/Library/Logs/gym/
-            build/
-            ios/App/*.log
           retention-days: 7
+          if-no-files-found: ignore
