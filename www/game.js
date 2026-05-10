@@ -1296,11 +1296,19 @@ const ts2 = {up:0,down:0,left:0,right:0,attack:0,dash:0,parry:0,launch:0,power1:
 const __touchRegistry = new Map(); // touchId -> { btn, key, stateObj, isAction }
 const __pressedBtns = new WeakMap(); // btn -> Set<touchId>
 
+// Edge-press buffer: action keys are zeroed each frame by gameLoop,
+// but on iOS WKWebView the touchstart event can arrive AFTER the rAF that should consume it,
+// effectively swallowing the press. Tag each press with a frame countdown so it survives 2 frames.
+const __pressBuf = {}; // key -> framesRemaining (per stateObj, namespaced)
+function __keyNS(stateObj, key){ return (stateObj === ts ? 'ts.' : 'ts2.') + key; }
+
 function __pressBtn(btn, stateObj, key, isAction, touchId){
   let set = __pressedBtns.get(btn);
   if(!set){ set = new Set(); __pressedBtns.set(btn, set); }
   set.add(touchId);
   stateObj[key] = 1;
+  // Buffer one-shot action keys so they survive at least 2 game-loop frames
+  if(isAction) __pressBuf[__keyNS(stateObj, key)] = 2;
   // DIAG: log every press so telemetry can show last button + key
   if(window.__telemetry){
     window.__telemetry.lastPress = (stateObj === ts ? 'ts' : (stateObj === ts2 ? 'ts2' : '?')) + '.' + String(key) + ' id=' + touchId + ' cls=' + (btn.className||'').slice(0,20);
@@ -5793,6 +5801,7 @@ function drawTelemetry(){
       'reg=' + __touchRegistry.size + ' jp.KeyS=' + (jp.KeyS?1:0) + ' jp.KeyR=' + (jp.KeyR?1:0),
       'p1: ' + (p1 ? ('alive='+p1.alive+' dead='+p1.dead+' frz='+(p1.frozen?1:0)+' lch='+(p1.launched?1:0)+' stn='+(p1.stunned?1:0)) : 'null'),
       'p1: ' + (p1 ? ('atkCD='+p1.atkCD.toFixed(2)+' atk='+(p1.atk?1:0)+' x='+Math.round(p1.x)+' vx='+Math.round(p1.vx)) : 'null'),
+      'timers: dt='+(tel.rawDt||0).toFixed(3)+' rT='+(tel.roundTimer||0).toFixed(1)+' cdT='+(tel.cdTimer||0).toFixed(1)+' hs='+(tel.hsTimer||0).toFixed(2)+' sm='+(tel.smTimer||0).toFixed(2),
       'press#'+(tel.pressCount||0)+': '+(tel.lastPress||'(none)'),
       tel.lastErr ? 'ERR: '+tel.lastErr.slice(0,60) : ''
     ];
@@ -5817,6 +5826,14 @@ function gameLoop(now){
   try {
   _frameCount++;
   const rawDt=Math.min((now-lastTS)/1000,.1);lastTS=now;gameTime+=rawDt;
+  // Expose for telemetry
+  if(window.__telemetry){
+    window.__telemetry.rawDt = rawDt;
+    window.__telemetry.roundTimer = (typeof roundTimer !== 'undefined') ? roundTimer : -1;
+    window.__telemetry.cdTimer = cdTimer;
+    window.__telemetry.hsTimer = hsTimer;
+    window.__telemetry.smTimer = smTimer;
+  }
 
   hsTimer=Math.max(0,hsTimer-rawDt);smTimer=Math.max(0,smTimer-rawDt);
   videoCooldown=Math.max(0,videoCooldown-rawDt);
@@ -5921,8 +5938,15 @@ function gameLoop(now){
   // Telemetry overlay (drawn AFTER ctx.restore so it's in screen space, on top of everything)
   drawTelemetry();
   for(const k in jp)delete jp[k];
-  ts.attack=0;ts.dash=0;ts.parry=0;ts.launch=0;ts.power1=0;ts.power2=0;ts.power3=0;ts.power4=0;ts.rage=0;
-  ts2.attack=0;ts2.dash=0;ts2.parry=0;ts2.launch=0;ts2.power1=0;ts2.power2=0;ts2.power3=0;ts2.power4=0;ts2.rage=0;
+  // Action key reset — but RESPECT the press buffer (iOS WKWebView swallows presses without it).
+  // Each action key decrements its buffer; only zero the ts/ts2 entry when the buffer reaches 0.
+  const __actionKeys = ['attack','dash','parry','launch','power1','power2','power3','power4','rage'];
+  for(let i = 0; i < __actionKeys.length; i++){
+    const k = __actionKeys[i];
+    const nsTs = 'ts.'+k, nsTs2 = 'ts2.'+k;
+    if(__pressBuf[nsTs] > 0){ __pressBuf[nsTs]--; } else { ts[k] = 0; }
+    if(__pressBuf[nsTs2] > 0){ __pressBuf[nsTs2]--; } else { ts2[k] = 0; }
+  }
   } catch(loopErr){
     // GOD-MODE SAFETY: a single bad frame must never kill the game loop.
     // requestAnimationFrame is already queued at the top of gameLoop, so we'll get next frame regardless.
