@@ -1278,38 +1278,48 @@ const ts = {up:0,down:0,left:0,right:0,attack:0,dash:0,parry:0,launch:0,power1:0
 const ts2 = {up:0,down:0,left:0,right:0,attack:0,dash:0,parry:0,launch:0,power1:0,power2:0,power3:0,power4:0,rage:0};
 
 // =====================================================================
-// PRODUCTION-GRADE TOUCH INPUT (iOS WKWebView / Capacitor)
+// UNIFIED GLOBAL TOUCH CONTROLLER (iOS WKWebView / Capacitor)
 // =====================================================================
-// Design notes:
-//   - Touch events ONLY. Pointer events on iOS Capacitor have race conditions
-//     where pointercancel fires immediately after pointerdown for synthetic touches.
-//   - Track active touch IDs per button. A button stays pressed as long as ANY
-//     finger is still on it. This is the standard iOS multi-touch pattern.
-//   - Use document-level touchmove to detect finger sliding OFF a button — iOS
-//     does not fire touchleave/touchout, so we must check element-from-point manually.
-//   - DO NOT clear all touch state on blur/visibilitychange — those fire during
-//     normal play (e.g. when the system tab bar appears) and would freeze input.
-//   - DO NOT use setPointerCapture — it interferes with multi-touch on iOS.
-//   - DO NOT preventDefault on touchend / touchcancel — only on touchstart and
-//     touchmove, so iOS doesn't synthesize a phantom click.
+// Architecture (v3 — full rewrite May 2026):
+//   Single document-level capture-phase handler routes EVERY touch via
+//   elementFromPoint + nearest-button radius search. No per-element
+//   touchstart/touchend listeners. This eliminates an entire class of
+//   bugs caused by iOS hit-testing the touch.target to the wrong element
+//   (sibling .dpad-ring, .abtns flex container, or a gap pixel).
+//
+// Why this is reliable:
+//   - elementFromPoint(clientX, clientY) returns the visual topmost element
+//     at the touch point, independent of iOS event.target quirks.
+//   - If that element is NOT a bound button (e.g. tap in a flex gap),
+//     we find the nearest bound button within SNAP_RADIUS_PX and press it.
+//   - All touches are tracked in a single Map keyed by touchId. Every
+//     touchend/touchcancel reliably finds and releases its entry.
+//   - Stuck-touch watchdog catches any touch whose end event was lost
+//     (e.g. iOS gesture zone hijack, OS-level cancel without event).
 
-const __touchRegistry = new Map(); // touchId -> { btn, key, stateObj, isAction }
+const __touchRegistry = new Map(); // touchId -> { btn, key, stateObj, isAction, t0 }
 const __pressedBtns = new WeakMap(); // btn -> Set<touchId>
+const __boundBtns = []; // [{ el, binding }] — flat array for nearest-button search
+const SNAP_RADIUS_PX = 28; // tap-snap radius when elementFromPoint misses a button
 
-// Edge-press buffer: action keys are zeroed each frame by gameLoop,
-// but on iOS WKWebView the touchstart event can arrive AFTER the rAF that should consume it,
-// effectively swallowing the press. Tag each press with a frame countdown so it survives 2 frames.
-const __pressBuf = {}; // key -> framesRemaining (per stateObj, namespaced)
+// Edge-press buffer: action keys are zeroed each frame by gameLoop.
+const __pressBuf = {};
 function __keyNS(stateObj, key){ return (stateObj === ts ? 'ts.' : 'ts2.') + key; }
 
 function __pressBtn(btn, stateObj, key, isAction, touchId){
+  // Idempotent: if this touchId already presses this exact button+key, skip
+  const existing = __touchRegistry.get(touchId);
+  if(existing && existing.btn === btn && existing.key === key){
+    existing.t0 = performance.now(); // refresh watchdog timer
+    return;
+  }
+  if(existing) __releaseBtn(touchId); // touchId migrated to a new button — clear old
+
   let set = __pressedBtns.get(btn);
   if(!set){ set = new Set(); __pressedBtns.set(btn, set); }
   set.add(touchId);
   stateObj[key] = 1;
-  // Buffer one-shot action keys so they survive at least 2 game-loop frames
   if(isAction) __pressBuf[__keyNS(stateObj, key)] = 2;
-  // DIAG: log every press so telemetry can show last button + key
   if(window.__telemetry){
     window.__telemetry.lastPress = (stateObj === ts ? 'ts' : (stateObj === ts2 ? 'ts2' : '?')) + '.' + String(key) + ' id=' + touchId + ' cls=' + (btn.className||'').slice(0,20);
     window.__telemetry.pressCount = (window.__telemetry.pressCount||0) + 1;
@@ -1321,7 +1331,7 @@ function __pressBtn(btn, stateObj, key, isAction, touchId){
   if(!isAction && key === 'up' && typeof guestInputBuf !== 'undefined' && guestInputBuf){
     guestInputBuf.up = true;
   }
-  __touchRegistry.set(touchId, { btn, key, stateObj, isAction });
+  __touchRegistry.set(touchId, { btn, key, stateObj, isAction, t0: performance.now() });
 }
 
 function __releaseBtn(touchId){
@@ -1342,36 +1352,42 @@ function __releaseBtn(touchId){
   }
 }
 
+// Resolve a touch point to a bound button.
+// Strategy 1: elementFromPoint → closest [data-__bound]
+// Strategy 2: nearest visible bound button within SNAP_RADIUS_PX
+function __resolveBtn(clientX, clientY){
+  const el = document.elementFromPoint(clientX, clientY);
+  if(el && el.closest){
+    const direct = el.closest('[data-__bound]');
+    if(direct) return direct;
+  }
+  let best = null;
+  let bestD2 = SNAP_RADIUS_PX * SNAP_RADIUS_PX;
+  for(let i = 0; i < __boundBtns.length; i++){
+    const b = __boundBtns[i];
+    if(b.el.offsetParent === null) continue; // hidden
+    const r = b.el.getBoundingClientRect();
+    if(r.width === 0 || r.height === 0) continue;
+    const dx = Math.max(r.left - clientX, 0, clientX - r.right);
+    const dy = Math.max(r.top - clientY, 0, clientY - r.bottom);
+    const d2 = dx * dx + dy * dy;
+    if(d2 < bestD2){ bestD2 = d2; best = b.el; }
+  }
+  return best;
+}
+
 function bindTouchBtn(el, stateObj, key, isAction){
   if(!el) return;
   el.dataset.__bound = '1';
-  // Stash binding metadata on the element so the global touchmove can find it
   el.__binding = { stateObj, key, isAction };
-  el.addEventListener('touchstart', (e) => {
-    e.preventDefault();
-    // Iterate changedTouches — any touch landing on this button registers as a press
-    for(let i = 0; i < e.changedTouches.length; i++){
-      const t = e.changedTouches[i];
-      __pressBtn(el, stateObj, key, isAction, t.identifier);
-    }
-  }, { passive: false });
-  el.addEventListener('touchend', (e) => {
-    for(let i = 0; i < e.changedTouches.length; i++){
-      __releaseBtn(e.changedTouches[i].identifier);
-    }
-  }, { passive: true });
-  el.addEventListener('touchcancel', (e) => {
-    for(let i = 0; i < e.changedTouches.length; i++){
-      __releaseBtn(e.changedTouches[i].identifier);
-    }
-  }, { passive: true });
-  // Mouse fallback (desktop only — ignored on iOS since touch fires first)
+  __boundBtns.push({ el, binding: el.__binding });
+  // Mouse fallback (desktop only)
   el.addEventListener('mousedown', (e) => {
     e.preventDefault();
     __pressBtn(el, stateObj, key, isAction, 'mouse');
   });
   el.addEventListener('mouseup', () => { __releaseBtn('mouse'); });
-  // Keyboard activation for accessibility (Enter/Space when focused)
+  // Keyboard activation (Enter/Space when focused)
   el.addEventListener('keydown', (e) => {
     if(e.key === ' ' || e.key === 'Enter'){
       e.preventDefault();
@@ -1383,58 +1399,75 @@ function bindTouchBtn(el, stateObj, key, isAction){
   });
 }
 
-// DIAG: global touchstart listener that fires BEFORE per-button handlers.
-// Logs raw clientX/Y, element under finger, and whether the touch lands inside
-// the home-indicator gesture zone (bottom ~34px of iPhone with home bar).
+// ─── GLOBAL TOUCH ROUTER ──────────────────────────────────────────────
+// Single capture-phase touchstart handler intercepts every touch BEFORE
+// any element-level listener. Routes via elementFromPoint + nearest-button
+// fallback. preventDefault suppresses the synthetic click/scroll/zoom.
 document.addEventListener('touchstart', (e) => {
-  if(!window.__telemetry) return;
-  const t = e.changedTouches[0];
-  if(!t) return;
-  const el = document.elementFromPoint(t.clientX, t.clientY);
-  const btn = el?.closest?.('[data-__bound]');
-  const vh = window.innerHeight;
-  const distFromBottom = vh - t.clientY;
-  const inGestureZone = distFromBottom < 34;
-  window.__telemetry.lastTouch = 'x='+Math.round(t.clientX)+' y='+Math.round(t.clientY)+' fromBot='+Math.round(distFromBottom)+(inGestureZone?' [GZ!]':'')+' el='+(el?.tagName||'?')+'.'+((el?.className||'').toString().slice(0,12))+' btn='+(btn?(btn.className||'').slice(0,15):'NONE');
-  window.__telemetry.touchCount = (window.__telemetry.touchCount||0) + 1;
-}, { passive: true, capture: true });
+  const t0 = e.changedTouches[0];
+  if(!t0) return;
+  // Route only when this touch resolves to a bound button. Otherwise let
+  // the platform handle it normally (menus, name input, scroll regions).
+  // __resolveBtn checks (1) elementFromPoint and (2) nearest-button snap,
+  // so it covers gap taps as well as direct hits.
+  const firstBtn = __resolveBtn(t0.clientX, t0.clientY);
+  if(!firstBtn) return;
 
-// Global touchmove: handle finger sliding off a button or onto another button.
-// This fires when the user starts on button A and drags to button B — standard arcade pattern.
+  e.preventDefault();
+  for(let i = 0; i < e.changedTouches.length; i++){
+    const t = e.changedTouches[i];
+    const btn = (i === 0) ? firstBtn : __resolveBtn(t.clientX, t.clientY);
+    if(window.__telemetry){
+      const vh = window.innerHeight;
+      const distFromBottom = vh - t.clientY;
+      window.__telemetry.lastTouch = 'x='+Math.round(t.clientX)+' y='+Math.round(t.clientY)+' fromBot='+Math.round(distFromBottom)+' btn='+(btn?(btn.className||'').slice(0,18):'NONE');
+      window.__telemetry.touchCount = (window.__telemetry.touchCount||0) + 1;
+    }
+    if(btn && btn.__binding){
+      const b = btn.__binding;
+      __pressBtn(btn, b.stateObj, b.key, b.isAction, t.identifier);
+    }
+  }
+}, { passive: false, capture: true });
+
+// Global touchmove: finger slides between buttons (standard arcade pattern).
 document.addEventListener('touchmove', (e) => {
   for(let i = 0; i < e.changedTouches.length; i++){
     const t = e.changedTouches[i];
     const entry = __touchRegistry.get(t.identifier);
-    const elUnder = document.elementFromPoint(t.clientX, t.clientY);
-    const btnUnder = elUnder?.closest?.('[data-__bound]');
-    if(entry && entry.btn !== btnUnder){
-      // Finger moved off the original button — release it
+    if(!entry) continue; // only track moves for touches we already own
+    const btnUnder = __resolveBtn(t.clientX, t.clientY);
+    if(btnUnder !== entry.btn){
       __releaseBtn(t.identifier);
-      // If under a different bound button, press that one
       if(btnUnder && btnUnder.__binding){
         const b = btnUnder.__binding;
         __pressBtn(btnUnder, b.stateObj, b.key, b.isAction, t.identifier);
       }
-    } else if(!entry && btnUnder && btnUnder.__binding){
-      // Finger slid onto a button without an active press — register it
-      const b = btnUnder.__binding;
-      __pressBtn(btnUnder, b.stateObj, b.key, b.isAction, t.identifier);
+    } else {
+      // Same button — refresh the watchdog timer so long-holds don't get force-released
+      entry.t0 = performance.now();
     }
   }
-}, { passive: true });
+}, { passive: true, capture: true });
 
-// Global touchend/touchcancel safety: catches releases that miss the per-button listener
-// (can happen if the user lifts their finger far from the button).
-document.addEventListener('touchend', (e) => {
+// Global touchend/touchcancel — releases via touchId.
+function __endHandler(e){
   for(let i = 0; i < e.changedTouches.length; i++){
     __releaseBtn(e.changedTouches[i].identifier);
   }
-}, { passive: true });
-document.addEventListener('touchcancel', (e) => {
-  for(let i = 0; i < e.changedTouches.length; i++){
-    __releaseBtn(e.changedTouches[i].identifier);
+}
+document.addEventListener('touchend', __endHandler, { passive: true, capture: true });
+document.addEventListener('touchcancel', __endHandler, { passive: true, capture: true });
+
+// Safety: when app is backgrounded, release everything.
+document.addEventListener('visibilitychange', () => {
+  if(document.hidden){
+    const ids = Array.from(__touchRegistry.keys());
+    for(const id of ids) __releaseBtn(id);
+    for(const k in ts){ ts[k] = 0; }
+    for(const k in ts2){ ts2[k] = 0; }
   }
-}, { passive: true });
+});
 
 // Bind all touch buttons
 document.querySelectorAll('#touch-controls .dpad-btn').forEach(b => {
@@ -1456,21 +1489,28 @@ document.querySelectorAll('#touch-2p [data-p="2"].abtn').forEach(b => {
   bindTouchBtn(b, ts2, b.dataset.action, true);
 });
 
-// NOTE: deliberately NOT clearing touch state on blur/visibilitychange.
-// On iOS WKWebView those fire spuriously during normal play and would freeze input.
-// Stuck-touch recovery is handled by the registry timeout below.
-
-// Stuck-touch watchdog: if any entry in __touchRegistry hasn't been touched in 8s,
-// release it. This is a last-resort safety net.
+// Stuck-touch watchdog (every 1s):
+//   1. Any registry entry idle for more than 4s → force-release (d-pad stick).
+//   2. Reconcile state objects against the registry.
 setInterval(() => {
-  // Reset ts/ts2 entries whose registry entries don't exist (safety reconciliation)
+  const now = performance.now();
+  const stale = [];
+  for(const [id, entry] of __touchRegistry){
+    if(now - entry.t0 > 4000) stale.push(id);
+  }
+  for(const id of stale){
+    if(window.__telemetry){
+      window.__telemetry.lastErr = 'watchdog: stale touch '+id+' force-released';
+    }
+    __releaseBtn(id);
+  }
   const activeKeys = new Set();
   for(const entry of __touchRegistry.values()){
-    activeKeys.add(entry.stateObj === ts ? 'ts.'+entry.key : 'ts2.'+entry.key);
+    activeKeys.add((entry.stateObj === ts ? 'ts.' : 'ts2.') + entry.key);
   }
   for(const k in ts){ if(!activeKeys.has('ts.'+k) && ts[k]){ ts[k] = 0; } }
   for(const k in ts2){ if(!activeKeys.has('ts2.'+k) && ts2[k]){ ts2[k] = 0; } }
-}, 2000);
+}, 1000);
 
 // Show/hide correct touch controls based on mode
 function showTouchControls(is2P){
@@ -5800,9 +5840,10 @@ function initViralSystems(){
 }
 
 // ─── MAIN LOOP ───
-// God-mode telemetry overlay — hidden by default in production builds.
-// Triple-tap canvas/HUD to toggle ON for diagnostics if needed.
-window.__telemetry = { on: false, fps: 0, frames: 0, lastT: 0, lastErr: '' };
+// God-mode telemetry overlay — ON for this diagnostic build to verify the
+// unified touch controller. Triple-tap canvas/HUD to toggle. Will be turned
+// OFF in the cleanup build once the user confirms the fix works.
+window.__telemetry = { on: true, fps: 0, frames: 0, lastT: 0, lastErr: '' };
 (function setupTelemetryToggle(){
   let taps = 0; let last = 0;
   const handler = () => {

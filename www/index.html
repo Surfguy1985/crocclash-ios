@@ -409,7 +409,11 @@
     .tp-label.p2l{color:var(--p2)}
 
     .tdpad{position:relative;width:120px;height:120px;flex-shrink:0}
-    .dpad-ring{position:absolute;inset:0;border-radius:50%;background:rgba(255,255,255,.03);border:1.5px solid rgba(255,255,255,.08)}
+    /* pointer-events:none so the visual ring never blocks hit-tests — buttons sit on top */
+    .dpad-ring{position:absolute;inset:0;border-radius:50%;background:rgba(255,255,255,.03);border:1.5px solid rgba(255,255,255,.08);pointer-events:none}
+    /* Containers must allow touches to pass through to their buttons */
+    .abtns,.arow,.tdpad{pointer-events:none}
+    .abtns .abtn,.arow .abtn,.tdpad .dpad-btn{pointer-events:auto}
     @media (pointer:fine){.dpad-ring{box-shadow:0 0 20px rgba(0,0,0,.4) inset}}
     .dpad-btn{position:absolute;width:48px;height:48px;border-radius:12px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);color:rgba(255,255,255,.7);font-size:18px;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none;touch-action:none;-ms-touch-action:none;will-change:opacity;cursor:pointer;box-sizing:border-box}
     /* Children of touch buttons must not capture pointer events — always bubble to the button */
