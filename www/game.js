@@ -1300,7 +1300,7 @@ const ts2 = {up:0,down:0,left:0,right:0,attack:0,dash:0,parry:0,launch:0,power1:
 const __touchRegistry = new Map(); // touchId -> { btn, key, stateObj, isAction, t0 }
 const __pressedBtns = new WeakMap(); // btn -> Set<touchId>
 const __boundBtns = []; // [{ el, binding }] — flat array for nearest-button search
-const SNAP_RADIUS_PX = 28; // tap-snap radius when elementFromPoint misses a button
+const SNAP_RADIUS_PX = 60; // generous tap-snap so visual-vs-hitbox offsets don't matter
 
 // Edge-press buffer: action keys are zeroed each frame by gameLoop.
 const __pressBuf = {};
@@ -1403,6 +1403,30 @@ function bindTouchBtn(el, stateObj, key, isAction){
 // Single capture-phase touchstart handler intercepts every touch BEFORE
 // any element-level listener. Routes via elementFromPoint + nearest-button
 // fallback. preventDefault suppresses the synthetic click/scroll/zoom.
+// RAW global catch-all: logs EVERY touchstart anywhere, unconditionally.
+// This shows us touches that are happening but failing to resolve to a button.
+document.addEventListener('touchstart', (e) => {
+  if(!window.__telemetry) return;
+  const t = e.changedTouches[0];
+  if(!t) return;
+  const el = document.elementFromPoint(t.clientX, t.clientY);
+  const elCls = el ? (el.tagName+'.'+((el.className||'').toString().slice(0,12))) : '?';
+  // Find the closest bound button regardless of radius, with distance
+  let nearest = null; let nearestD = Infinity;
+  for(const b of __boundBtns){
+    if(b.el.offsetParent === null) continue;
+    const r = b.el.getBoundingClientRect();
+    if(r.width===0) continue;
+    const dx = Math.max(r.left-t.clientX, 0, t.clientX-r.right);
+    const dy = Math.max(r.top-t.clientY, 0, t.clientY-r.bottom);
+    const d = Math.sqrt(dx*dx + dy*dy);
+    if(d < nearestD){ nearestD = d; nearest = b.el; }
+  }
+  const nearCls = nearest ? (nearest.className||'').slice(0,15) : 'none';
+  window.__telemetry.rawTouch = 'x='+Math.round(t.clientX)+' y='+Math.round(t.clientY)+' el='+elCls+' near='+nearCls+'@'+Math.round(nearestD)+'px';
+  window.__telemetry.rawTouchCount = (window.__telemetry.rawTouchCount||0) + 1;
+}, { passive: true, capture: true });
+
 document.addEventListener('touchstart', (e) => {
   const t0 = e.changedTouches[0];
   if(!t0) return;
@@ -5881,6 +5905,7 @@ function drawTelemetry(){
       'timers: dt='+(tel.rawDt||0).toFixed(3)+' rT='+(tel.roundTimer||0).toFixed(1)+' cdT='+(tel.cdTimer||0).toFixed(1)+' hs='+(tel.hsTimer||0).toFixed(2)+' sm='+(tel.smTimer||0).toFixed(2),
       'press#'+(tel.pressCount||0)+': '+(tel.lastPress||'(none)'),
       'touch#'+(tel.touchCount||0)+': '+(tel.lastTouch||'(none)'),
+      'raw#'+(tel.rawTouchCount||0)+': '+(tel.rawTouch||'(none)'),
       tel.lastErr ? 'ERR: '+tel.lastErr.slice(0,60) : ''
     ];
     const dctx = ctx;
@@ -5894,6 +5919,24 @@ function drawTelemetry(){
     dctx.fillStyle = '#7fff7f';
     for(let i = 0; i < lines.length; i++){
       dctx.fillText(lines[i], 4 + padX, 4 + padY + (i+1) * lh - 3);
+    }
+    // VISUAL HITBOX OVERLAY: draw each bound button's getBoundingClientRect()
+    // as a bright red outline so we can SEE where the touch system thinks
+    // each button is, vs where it visually appears. Mismatch = the bug.
+    dctx.lineWidth = 2;
+    for(let i = 0; i < __boundBtns.length; i++){
+      const b = __boundBtns[i];
+      if(b.el.offsetParent === null) continue;
+      const r = b.el.getBoundingClientRect();
+      if(r.width === 0) continue;
+      // Use canvas device-pixel space: multiply by DPR if canvas is hi-res
+      const dpr = canvas.width / (canvas.style.width ? parseFloat(canvas.style.width) : window.innerWidth);
+      dctx.strokeStyle = b.binding.isAction ? '#ff3030' : '#3080ff';
+      dctx.strokeRect(r.left * dpr, r.top * dpr, r.width * dpr, r.height * dpr);
+      // Label with the button's key in the top-left of its rect
+      dctx.fillStyle = b.binding.isAction ? '#ff8080' : '#80b0ff';
+      dctx.font = '600 9px monospace';
+      dctx.fillText(b.binding.key, r.left * dpr + 2, r.top * dpr + 10);
     }
     dctx.restore();
   } catch(e){ /* swallow — telemetry must never break the game */ }
